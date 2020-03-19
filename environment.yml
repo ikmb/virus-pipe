@@ -1,0 +1,16 @@
+# You can use this file to create a conda environment for this pipeline:
+#   conda env create -f environment.yml
+name: virus-pipe-1.0
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - fastp=0.20.0
+  - bwa=0.7.17
+  - multiqc=1.7
+  - samtools=1.9
+  - bcftools=1.9
+  - htslib=1.9 
+  - iva=1.0.9
+  - freebayes=1.3.2
