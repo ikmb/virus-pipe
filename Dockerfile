@@ -15,9 +15,8 @@ RUN cd /opt && \
         ./install.sh /usr/local/
 
 RUN cd /opt && \
-        git clone --recurse-submodules https://github.com/bcgsc/biobloom.git build_bloom && \
-        cd build_bloom && git submodule update --init && \
-        ./autogen.sh && \
+	wget https://github.com/bcgsc/biobloom/releases/download/2.3.1/biobloomtools-2.3.1.tar.gz && \
+	tar -xvf biobloomtools-2.3.1.tar.gz && rm biobloomtools-2.3.1.tar.gz && cd  biobloomtools-2.3.1 && \
         ./configure --prefix=/opt/biobloom && make install && \
-        cd /opt && rm -Rf build_bloom
+        cd /opt && rm -Rf biobloomtools-2.3.1
 
