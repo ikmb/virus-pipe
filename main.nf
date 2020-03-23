@@ -1,5 +1,7 @@
 #!/usr/bin/env nextflow
 
+params.version = workflow.manifest.version
+
 // Help message
 helpMessage = """
 ===============================================================================
@@ -42,9 +44,9 @@ BLOOMFILTER = params.bloomfilter
 
 OUTDIR = params.outdir
 
-Channel.fromReadPairs(params.reads)
+Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your criteria!" }
-	.into { reads_fastp }
+	.set { reads_fastp }
 
 process runFastp {
 
@@ -54,7 +56,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	
+	set val(id),file(left),file(right) into (inputBioBloom , inputBwa)
         set file(html),file(json) into fastp_results
 
         script:
@@ -78,7 +80,7 @@ process Bloomfilter {
 	set id,file(left_reads),file(right_reads) from inputBioBloom
 
 	output:
-	set id,file(left_reads),file(right_reads) into outputBloomfilter
+	set id,file(clean_reads) into inputIva
 	set id,file(bloom) into BloomReport
 
 	script:
@@ -87,7 +89,7 @@ process Bloomfilter {
 	clean_reads = id + ".filtered.fastq.gz"
 
 	"""
-		biobloomcategorizer -p $id -gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER" $left_reads $right_reads | gzip > $clean_reads
+		biobloomcategorizer -p $id --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER" $left_reads $right_reads | gzip > $clean_reads
 	"""
 
 }
@@ -101,7 +103,7 @@ process runIva {
 	
 
 	output:
-	set val(id),file(contigs) into contifsIva
+	set val(id),file(contigs) into ( contigsIva, contigsAlign)
 
 	script:
 
@@ -120,6 +122,27 @@ process runIva {
 }
 
 if (REF) {
+
+	process alignRef {
+
+		publishDir "${OUTDIR}/${id}/Assembly/Iva/Alignment", mode: 'copy'
+
+		input:
+		set val(id),file(contigs) from contigsAlign
+
+		output:
+		set val(id),file(msa) into contigsMSA
+
+		script:
+		ref_name = REF.getBaseName()
+		msa = id + "." + ref_name + ".aln"
+
+		"""
+			cat $REF $contigs >> sequences.fa
+			muscle -in sequence.fa -out sequences.aln --clustwstrict
+		"""
+
+	}
 
 	process makeBwaIndex {
 		
@@ -144,22 +167,24 @@ if (REF) {
 
 	process runBwa {
 
+		publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
+
 		input:
-		set val(id),file(right),file(left) from inputBwa
+		set val(sampleID),file(left),file(right) from inputBwa
 		set file(fasta),file(amb),file(ann),file(bwt),file(pac),file(sa) from BwaIndex.collect()
 
 
 		output:
-		set val(id),file(bam),file(bai) into bwaBam
+		set val(sampleID),file(bam),file(bai) into bwaBam
 
 		script:
 		ref_name = REF.getBaseName()
-		bam = id + "." ref_name + ".aligned.bam"
+		bam = sampleID + "." + ref_name + ".aligned.bam"
 		bai = bam + ".bai"
 
 		"""
 			samtools dict $fasta > header.txt
-			bwa mem -H header.txt -t ${task.cpus} $fasta | samtools sort  -O bam -m 2G -@ 4 - > $bam
+			bwa mem -H header.txt -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${REF}\\tCN:CCGA" -t ${task.cpus} $fasta $left $right | samtools sort -O bam -m 2G -@ 4 - > $bam
 			samtools index $bam
 		"""
 	}
@@ -179,8 +204,12 @@ if (REF) {
 		bai_md = bam_md + ".bai"
 
 		"""
-			samtools markdup $bam $bam_md
+			samtools sort -n $bam | samtools fixmate -m - fix.bam
+			samtools sort -O BAM -o sorted.bam fix.bam
+			samtools index sorted.bam
+			samtools markdup sorted.bam $bam_md
 			samtools index $bam_md
+			rm fix.bam sorted.bam 
 		"""
 
 	}
@@ -190,7 +219,7 @@ if (REF) {
 		publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 		input:
-		set val(id),file(bam),file(bai) from baMD
+		set val(id),file(bam),file(bai) from bamMD
 
 		output:
 		set val(id),file(vcf) into fbVcf
@@ -200,9 +229,27 @@ if (REF) {
 		vcf = base_name + ".vcf"
 
 		"""
-			freebayes -f $REF --genotype-qualities $bam > $vcf
+			freebayes --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
 		"""
 
+	}
+
+	process runFilterVcf {
+
+		publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+		input:
+		set val(id),file(vcf) from fbVcf
+
+		output:
+		file(vcf_filtered) into finalVcf
+
+		script:
+		vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
+
+		"""
+			bcftools filter ${params.filter_options} $vcf > $vcf_filtered
+		"""
 	}
 
 }
