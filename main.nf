@@ -14,6 +14,7 @@ Required parameters:
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --reference			A reference genome in fasta format to compare against
+--iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -36,8 +37,13 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	REF = false
-	FastaIndex = Channel.empty()
+	REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
+	Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+	.set { FastaIndex }
+}
+
+if (!REF.exists() ) {
+	exit 1, "Could not find reference file..."
 }
 
 BLOOMFILTER = params.bloomfilter
@@ -111,8 +117,8 @@ process runIva {
 	contigs = outdir + "/contigs.fasta"
 
 	def options = ""
-	if (params.reference) {
-		options = "--reference ${params.reference}"
+	if (params.iva_guided) {
+		options = "--reference $REF"
 	}
 
 	"""
@@ -135,11 +141,12 @@ if (REF) {
 
 		script:
 		ref_name = REF.getBaseName()
-		msa = id + "." + ref_name + ".aln"
+		merged_fa = id + "." + ref_name + ".fa"
+		msa = merged_fa + ".aln"
 
 		"""
-			cat $REF $contigs >> sequences.fa
-			muscle -in sequence.fa -out sequences.aln --clustwstrict
+			cat $REF $contigs >> $merged_fa
+			muscle -in $merged_fa -out $msa -clwstrict
 		"""
 
 	}
@@ -206,10 +213,9 @@ if (REF) {
 		"""
 			samtools sort -n $bam | samtools fixmate -m - fix.bam
 			samtools sort -O BAM -o sorted.bam fix.bam
-			samtools index sorted.bam
 			samtools markdup sorted.bam $bam_md
 			samtools index $bam_md
-			rm fix.bam sorted.bam 
+			rm fix.bam sorted.bam* 
 		"""
 
 	}
