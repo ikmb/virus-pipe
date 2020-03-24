@@ -46,7 +46,10 @@ if (!REF.exists() ) {
 	exit 1, "Could not find reference file..."
 }
 
-BLOOMFILTER = params.bloomfilter
+BLOOMFILTER_HOST = params.bloomfilter_host
+BLOOMFILTER_VIRAL = params.bloomfilter_viral
+
+PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
 
 OUTDIR = params.outdir
 
@@ -62,7 +65,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloom , inputBwa)
+	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomViral , inputBwa, inputPathoscopeMap )
         set file(html),file(json) into fastp_results
 
         script:
@@ -78,27 +81,49 @@ process runFastp {
 	
 }
 
-process Bloomfilter {
+process BloomfilterHost {
 
-	publishDir "${OUTDIR}/${id}/Bloomfilter", mode: 'copy'
+	publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
 
 	input:
-	set id,file(left_reads),file(right_reads) from inputBioBloom
+	set id,file(left_reads),file(right_reads) from inputBioBloomHost
 
 	output:
 	set id,file(clean_reads) into inputIva
-	set id,file(bloom) into BloomReport
+	set id,file(bloom) into BloomReportHost
 
 	script:
-
-	bloom = id + "_summary.tsv"
-	clean_reads = id + ".filtered.fastq.gz"
+	analysis = id + ".Host" 
+	bloom = analysis + "_summary.tsv"
+	clean_reads = analysis + ".filtered.fastq.gz"
 
 	"""
-		biobloomcategorizer -p $id --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER" $left_reads $right_reads | gzip > $clean_reads
+		biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
 	"""
 
 }
+
+process BloomfilterViral {
+
+        publishDir "${OUTDIR}/${id}/Bloomfilter/Viral", mode: 'copy'
+
+        input:
+        set id,file(left_reads),file(right_reads) from inputBioBloomViral
+
+        output:
+        set id,file(bloom) into BloomReportViral
+
+        script:
+	analysis = id + ".Viral"
+        bloom = analysis + "_summary.tsv"
+        clean_reads = analysis + ".filtered.fastq.gz"
+
+        """
+                biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_VIRAL" $left_reads $right_reads | gzip > $clean_reads
+        """
+
+}
+
 
 process runIva {
 
@@ -126,6 +151,46 @@ process runIva {
 	"""
 
 }
+
+process runPathoscopeMap {
+
+	input:
+	set id,file(left_reads),file(right_reads) from inputPathoscopeMap
+
+	output:
+	set id,file(pathoscope_sam) into inputPathoscopeId
+
+	script:
+	pathoscope_sam = id + ".sam"
+
+	"""
+        	pathoscope MAP -1 $left_reads -2 $right_reads -indexDir $PATHOSCOPE_INDEX_DIR -filterIndexPrefixes hg19_rRNA \
+	        -targetIndexPrefix A-Lbacteria.fa,M-Zbacteria.fa,virus.fa -outAlign $pathoscope_sam -expTag $id -numThreads ${task.cpus}
+	"""
+
+}
+
+process runPathoscopeId {
+
+	publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
+
+	input:
+	set id,file(samfile) from inputPathoscopeId
+
+	output:
+	set id,file(pathoscope_tsv) into outputPathoscopeId
+
+	script:
+
+	//pathoscope_sam = "updated_" + samfile
+	pathoscope_tsv = id + "-sam-report.tsv"
+
+	"""
+        	pathoscope ID -alignFile $samfile -fileType sam -expTag $id
+	"""
+
+}
+
 
 if (REF) {
 
