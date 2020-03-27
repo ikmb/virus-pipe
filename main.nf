@@ -28,6 +28,7 @@ if (params.help){
 }
 
 
+// Enable reference-based analyses like variant calling
 if (params.reference) {
 	REF = file(params.reference)
 	if (!REF.exists() ) {
@@ -46,6 +47,7 @@ if (!REF.exists() ) {
 	exit 1, "Could not find reference file..."
 }
 
+// set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
 
 KRAKEN2_DB = params.kraken2_db
@@ -53,6 +55,11 @@ KRAKEN2_DB = params.kraken2_db
 PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
 
 OUTDIR = params.outdir
+
+
+// ********************
+// WORKFLOW STARTS HERE
+// ********************
 
 Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your criteria!" }
@@ -71,7 +78,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomViral , inputBwa, inputPathoscopeMap )
+	set val(id),file(left),file(right) into (inputBioBloomHost ,  inputBwa, inputPathoscopeMap, inputKraken )
         set file(html),file(json) into fastp_results
 
         script:
