@@ -123,7 +123,7 @@ process BloomfilterHost {
 
 process runKraken2 {
 
-	label 'std'
+	label 'kraken'
 
 	publishDir "${OUTDIR}/${id}/Taxonomy/", mode: 'copy'
 
