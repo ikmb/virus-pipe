@@ -38,8 +38,8 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
-	Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+	REF = file("${baseDir}/assets/reference/MN908947.3.fa")
+	Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fa")
 	.set { FastaIndex }
 }
 
@@ -49,6 +49,7 @@ if (!REF.exists() ) {
 
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
+BLOOMFILTER_TARGET = params.bloomfilter_target
 
 KRAKEN2_DB = params.kraken2_db
 
@@ -78,7 +79,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost ,  inputBwa, inputPathoscopeMap, inputKraken )
+	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBwa, inputPathoscopeMap, inputKraken )
         set file(html),file(json) into fastp_results
 
         script:
@@ -95,7 +96,7 @@ process runFastp {
 }
 
 // **********************
-// Filter reads against a host contamination (e.g. human)
+// Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
 // **********************
 process BloomfilterHost {
 
@@ -107,7 +108,7 @@ process BloomfilterHost {
 	set id,file(left_reads),file(right_reads) from inputBioBloomHost
 
 	output:
-	set id,file(clean_reads) into inputIva
+	set id,file(clean_reads)
 	set id,file(bloom) into BloomReportHost
 
 	script:
@@ -119,6 +120,32 @@ process BloomfilterHost {
 		biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
 	"""
 
+}
+
+// ************************
+// Get all the reads for a target species
+// ************************
+process BloomfilterTarget {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/${id}/Bloomfilter/Target", mode: 'copy'
+
+	input:
+        set id,file(left_reads),file(right_reads) from inputBioBloomTarget
+
+        output:
+        set id,file(clean_reads) into inputIva
+        set id,file(bloom) into BloomReportTarget
+
+        script:
+        analysis = id + ".Target"
+        bloom = analysis + "_summary.tsv"
+        clean_reads = analysis + ".filtered.fastq.gz"
+
+        """
+                biobloomcategorizer -p $analysis --gz_output -d -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_TARGET" $left_reads $right_reads | gzip > $clean_reads
+        """
 }
 
 process runKraken2 {
@@ -141,6 +168,12 @@ process runKraken2 {
 	"""
 }
 
+def check_data(id,reads) {
+
+	
+
+}
+
 // **********************
 // Assembly reads, optionally with a reference
 // **********************
@@ -150,9 +183,13 @@ process runIva {
 
         publishDir "${OUTDIR}/${id}/Assembly/Iva", mode: 'copy'
 
+	when:
+	params.assemble
+
 	input:
-	set val(id),file(reads) from inputIva
+	set val(id),file(reads) from inputIva.filter{ i,r -> r.size() > 500000 }
 	
+
 
 	output:
 	set val(id),file(contigs) into ( contigsIva, contigsAlign)
@@ -167,6 +204,7 @@ process runIva {
 		options = "--reference $REF"
 	}
 
+	println reads.size()
 	"""
 		iva --fr $reads $options $outdir
 	"""
@@ -229,14 +267,14 @@ process runPathoscopeId {
 
 process alignRef {
 
-        label 'std'
+       	label 'std'
 
 	publishDir "${OUTDIR}/${id}/Assembly/Iva/Alignment", mode: 'copy'
 	
 	when:
 	params.align
 
-	input:
+	input:	
 	set val(id),file(contigs) from contigsAlign
 
 	output:
@@ -247,7 +285,7 @@ process alignRef {
 	merged_fa = id + "." + ref_name + ".fa"
 	msa = merged_fa + ".aln"
 
-	"""
+	"""	
 		cat $REF $contigs >> $merged_fa
 		muscle -in $merged_fa -out $msa -clwstrict
 	"""
@@ -256,8 +294,8 @@ process alignRef {
 
 process makeBwaIndex {
 
-        label 'std'
-		
+       	label 'std'
+
 	input:
 	file(fasta) from FastaIndex
 
@@ -279,7 +317,7 @@ process makeBwaIndex {
 
 process runBwa {
 
-        label 'std'
+       	label 'std'
 
 	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
 
@@ -304,15 +342,15 @@ process runBwa {
 
 process runMD {
 
-        label 'std'
-	
+       	label 'std'
+
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
-	
+
 	input:
 	set val(id),file(bam),file(bai) from bwaBam
 
 	output:
-	set val(id),file(bam_md),file(bai_md) into bamMD		
+	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
 
 	script:
 	bam_md = bam.getBaseName() + ".md.bam"
@@ -328,12 +366,36 @@ process runMD {
 
 }
 
-process runFreebayes {
+process runCoverageStats {
+	
+	label 'std'
 
-        label 'std'
+	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
+
+	input:
+	set val(id),file(bam),file(bai) from inputBamStats
+
+	output:
+	set val(id),file(coverage_stats) into BamStats
+
+	script:
+	coverage_stats = id + ".wgs_coverage.txt"
+
+	"""
+		picard -Xmx${task.memory.toGiga()}G CollectWgsMetrics \
+                I=$bam \
+       	        O=$coverage_stats \
+               	R=$REF \
+
+	"""
+	
+}
+
+process runFreebayes {
+	
+       	label 'std'
 
 	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
-
 	input:
 	set val(id),file(bam),file(bai) from bamMD
 
@@ -351,8 +413,8 @@ process runFreebayes {
 }
 
 process runFilterVcf {
-
-        label 'std'
+	
+       	label 'std'
 
 	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 

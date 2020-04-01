@@ -1,0 +1,14 @@
+[user_input_options]
+filter_id=covid19
+kmer_size=25
+desired_false_positve_rate=0.0078125
+number_of_hash_functions=7
+expected_num_entries=1716993
+sequence_sources=covid19_all.complete.fasta 
+
+[runtime_options]
+size=17339712
+num_entries=34327
+approximate_false_positive_rate=9.34984e-14
+redundant_sequences=1682441
+redundant_fpr=1.17491e-14
