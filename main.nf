@@ -15,6 +15,7 @@ Required parameters:
 Optional parameters:
 --reference			A reference genome in fasta format to compare against
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
+--mn_ref 			use the reference genome MN908947.3.fa
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -38,9 +39,15 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	REF = file("${baseDir}/assets/reference/MN908947.3.fa")
-	Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fa")
-	.set { FastaIndex }
+	if (params.mn_ref) {
+		REF = file("${baseDir}/assets/reference/MN908947.3.fa")
+		Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fa")
+		.set { FastaIndex }
+	} else {
+		REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
+                Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+                .set { FastaIndex }
+	}
 }
 
 if (!REF.exists() ) {
