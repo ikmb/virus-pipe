@@ -16,3 +16,4 @@ dependencies:
   - freebayes=1.3.2
   - muscle
   - picard=2.18.11
+  - bbmap

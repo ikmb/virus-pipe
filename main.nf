@@ -16,6 +16,7 @@ Optional parameters:
 --reference			A reference genome in fasta format to compare against
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --mn_ref 			use the reference genome MN908947.3.fa
+--assemble			Assemble genomes de-novo
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -65,6 +66,18 @@ PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
 OUTDIR = params.outdir
 
 
+// Header log info
+log.info "========================================="
+log.info "${workflow.manifest.description} v${params.version}"
+log.info "Nextflow Version:             $workflow.nextflow.version"
+log.info "Reference:             	${REF}"
+log.info "Command Line:                 $workflow.commandLine"
+if (workflow.containerEngine) {
+        log.info "Container engine:             ${workflow.containerEngine}"
+}
+log.info "========================================="
+
+
 // ********************
 // WORKFLOW STARTS HERE
 // ********************
@@ -86,8 +99,8 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBwa, inputPathoscopeMap, inputKraken )
-        set file(html),file(json) into fastp_results
+	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBwa )
+        set file(html),file(json) into fastp_qc
 
         script:
 
@@ -115,8 +128,8 @@ process BloomfilterHost {
 	set id,file(left_reads),file(right_reads) from inputBioBloomHost
 
 	output:
-	set id,file(clean_reads)
-	set id,file(bloom) into BloomReportHost
+	set id,file(clean_reads) into inputReformat
+	set file(bloom) into BloomReportHost
 
 	script:
 	analysis = id + ".Host" 
@@ -126,6 +139,25 @@ process BloomfilterHost {
 	"""
 		biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
 	"""
+
+}
+
+process runDeinterlave {
+
+
+        input:
+        set val(id),file(reads) from inputReformat
+
+        output:
+        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken )
+
+        script:
+        left = id + "_R1_001.bloom_non_host.fastq.gz"
+        right = id + "_R2_001.bloom_non_host.fastq.gz"
+
+        """
+                reformat.sh in=$reads out1=$left out2=$right
+        """
 
 }
 
@@ -143,7 +175,7 @@ process BloomfilterTarget {
 
         output:
         set id,file(clean_reads) into inputIva
-        set id,file(bloom) into BloomReportTarget
+        set file(bloom) into BloomReportTarget
 
         script:
         analysis = id + ".Target"
@@ -175,11 +207,6 @@ process runKraken2 {
 	"""
 }
 
-def check_data(id,reads) {
-
-	
-
-}
 
 // **********************
 // Assembly reads, optionally with a reference
@@ -195,8 +222,6 @@ process runIva {
 
 	input:
 	set val(id),file(reads) from inputIva.filter{ i,r -> r.size() > 500000 }
-	
-
 
 	output:
 	set val(id),file(contigs) into ( contigsIva, contigsAlign)
@@ -439,3 +464,25 @@ process runFilterVcf {
 	"""
 }
 
+process runMultiQC {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+	input:
+	file('*') from fastp_qc.ifEmpty('')
+	file('*') from BamStats.ifEmpty('')
+	file('*') from BloomReportTarget.ifEmpty('')
+	file('*') from BloomReportHost.ifEmpty('')
+
+	output:
+	file("multiqc_report.html") into ReportMultiQC
+
+	script:
+
+	"""
+		multiqc *
+	"""
+
+}
