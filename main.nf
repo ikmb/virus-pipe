@@ -444,7 +444,7 @@ process runCoverageStats {
                 I=$bam \
        	        O=$coverage_stats \
                	R=$REF \
-		MINIMUM_MAPPING_QUALITY=0
+		MINIMUM_MAPPING_QUALITY=5
 
 	"""
 	
@@ -513,7 +513,7 @@ process runMultiQC {
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
-	file("multiqc_report.html") into ReportMultiQC
+	file("multiqc_report.html") into multiqc_report
 
 	script:
 
