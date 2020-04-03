@@ -1,0 +1,20 @@
+title: "Virus pipeline report"
+subtitle: "Identification, assembly and variant calling"
+custom_logo: "ikmblogo.png"
+custom_logo_title: "Insitute of Clinical Molecular Biology, Kiel"
+custom_logo_url: "http://www.ikmb.uni-kiel.de"
+
+extra_fn_clean_exts:
+    - _R1
+    - _R2
+    - .dedup
+report_comment: >
+    This report has been generated automatically by the IKMB Virus pipeline.
+    For help interpreting the outputs, please see: https://github.com/ikmb/virus-pipe
+
+report_header_info:
+    - Contact E-mail: "m.hoeppner@ikmb.uni-kiel.de"
+    - Application Type: "Viral sequencing"
+
+top_modules:
+    - 'general_stats'

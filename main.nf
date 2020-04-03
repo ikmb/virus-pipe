@@ -13,10 +13,12 @@ Required parameters:
 --reads                        Input reads as a set of one or more PE Illumina reads
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
+--run_name			Specify a name for this analysis run
 --reference			A reference genome in fasta format to compare against
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --mn_ref 			use the reference genome MN908947.3.fa
 --assemble			Assemble genomes de-novo
+--email				Specify email to send report to
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -29,6 +31,7 @@ if (params.help){
     exit 0
 }
 
+def summary = [:]
 
 // Enable reference-based analyses like variant calling
 if (params.reference) {
@@ -65,12 +68,17 @@ PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
 
 OUTDIR = params.outdir
 
+run_name = ( params.run_name == false) ? "${workflow.sessionId}" : "${params.run_name}"
+
+if (params.run_name == false) {
+        log.info "No run name was specified, using ${run_name} instead"
+}
 
 // Header log info
 log.info "========================================="
 log.info "${workflow.manifest.description} v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
-log.info "Reference:             	${REF}"
+log.info "Reference:             		${REF}"
 log.info "Command Line:                 $workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:             ${workflow.containerEngine}"
@@ -129,7 +137,7 @@ process BloomfilterHost {
 
 	output:
 	set id,file(clean_reads) into inputReformat
-	set file(bloom) into BloomReportHost
+	file(bloom) into BloomReportHost
 
 	script:
 	analysis = id + ".Host" 
@@ -142,8 +150,12 @@ process BloomfilterHost {
 
 }
 
+// *************************
+// Take the interlaved non-host reads and produce sane PE data 
+// *************************
 process runDeinterlave {
 
+	label 'std'
 
         input:
         set val(id),file(reads) from inputReformat
@@ -156,7 +168,7 @@ process runDeinterlave {
         right = id + "_R2_001.bloom_non_host.fastq.gz"
 
         """
-                reformat.sh in=$reads out1=$left out2=$right
+                reformat.sh in=$reads out1=$left out2=$right addslash int
         """
 
 }
@@ -175,7 +187,7 @@ process BloomfilterTarget {
 
         output:
         set id,file(clean_reads) into inputIva
-        set file(bloom) into BloomReportTarget
+        file(bloom) into BloomReportTarget
 
         script:
         analysis = id + ".Target"
@@ -187,6 +199,9 @@ process BloomfilterTarget {
         """
 }
 
+// *************************
+// Get a list of non-host species in the sample
+// *************************
 process runKraken2 {
 
 	label 'kraken'
@@ -209,7 +224,7 @@ process runKraken2 {
 
 
 // **********************
-// Assembly reads, optionally with a reference
+// Assemble reads, optionally with a reference
 // **********************
 process runIva {
 
@@ -238,7 +253,7 @@ process runIva {
 
 	println reads.size()
 	"""
-		iva --fr $reads $options $outdir
+		iva --fr $reads -t ${task.cpus} $options $outdir
 	"""
 
 }
@@ -276,7 +291,7 @@ process runPathoscopeId {
 	publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
 
 	input:
-	set id,file(samfile) from inputPathoscopeId
+	set id,file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
 
 	output:
 	set id,file(pathoscope_tsv) into outputPathoscopeId
@@ -296,7 +311,6 @@ process runPathoscopeId {
 // **********************
 // Align assembly against a reference genome
 // **********************
-
 process alignRef {
 
        	label 'std'
@@ -324,6 +338,9 @@ process alignRef {
 
 }
 
+// *********************
+// Create mapping index from reference genome
+// *********************
 process makeBwaIndex {
 
        	label 'std'
@@ -347,6 +364,9 @@ process makeBwaIndex {
 	"""
 }
 
+// **************************
+// align reads against reference genome
+// **************************
 process runBwa {
 
        	label 'std'
@@ -372,6 +392,9 @@ process runBwa {
 	"""
 }
 
+// ***********************
+// Mark duplicate reads
+// ***********************
 process runMD {
 
        	label 'std'
@@ -385,7 +408,7 @@ process runMD {
 	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
 
 	script:
-	bam_md = bam.getBaseName() + ".md.bam"
+	bam_md = id + ".dedup.bam"
 	bai_md = bam_md + ".bai"
 
 	"""
@@ -398,6 +421,9 @@ process runMD {
 
 }
 
+// ************************
+// Coverage statistics
+// ************************
 process runCoverageStats {
 	
 	label 'std'
@@ -418,11 +444,15 @@ process runCoverageStats {
                 I=$bam \
        	        O=$coverage_stats \
                	R=$REF \
+		MINIMUM_MAPPING_QUALITY=0
 
 	"""
 	
 }
 
+// ************************
+// Variant calling
+// ************************
 process runFreebayes {
 	
        	label 'std'
@@ -444,6 +474,9 @@ process runFreebayes {
 
 }
 
+// ********************
+// Filter variant calls
+// ********************
 process runFilterVcf {
 	
        	label 'std'
@@ -464,17 +497,20 @@ process runFilterVcf {
 	"""
 }
 
+// **********************
+// Compile quality metrics into report
+// **********************
 process runMultiQC {
 
 	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	publishDir "${OUTDIR}/MultiQC", mode: 'copy'
 
 	input:
-	file('*') from fastp_qc.ifEmpty('')
-	file('*') from BamStats.ifEmpty('')
-	file('*') from BloomReportTarget.ifEmpty('')
-	file('*') from BloomReportHost.ifEmpty('')
+	file('*') from fastp_qc.collect().ifEmpty('')
+	file('*') from BamStats.collect().ifEmpty('')
+	file('*') from BloomReportTarget.collect().ifEmpty('')
+	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
 	file("multiqc_report.html") into ReportMultiQC
@@ -482,7 +518,101 @@ process runMultiQC {
 	script:
 
 	"""
+		cp $baseDir/assets/multiqc_config.yaml multiqc_config.yaml
+		cp $params.logo .
+
 		multiqc *
 	"""
 
 }
+
+workflow.onComplete {
+  log.info "========================================="
+  log.info "Duration:           $workflow.duration"
+  log.info "========================================="
+
+  def email_fields = [:]
+  email_fields['version'] = workflow.manifest.version
+  email_fields['session'] = workflow.sessionId
+  email_fields['runName'] = run_name
+  email_fields['Reads'] = params.reads
+  email_fields['success'] = workflow.success
+  email_fields['dateStarted'] = workflow.start
+  email_fields['dateComplete'] = workflow.complete
+  email_fields['duration'] = workflow.duration
+  email_fields['exitStatus'] = workflow.exitStatus
+  email_fields['errorMessage'] = (workflow.errorMessage ?: 'None')
+  email_fields['errorReport'] = (workflow.errorReport ?: 'None')
+  email_fields['commandLine'] = workflow.commandLine
+  email_fields['projectDir'] = workflow.projectDir
+  email_fields['script_file'] = workflow.scriptFile
+  email_fields['launchDir'] = workflow.launchDir
+  email_fields['user'] = workflow.userName
+  email_fields['Pipeline script hash ID'] = workflow.scriptId
+  email_fields['Reference'] = REF
+  email_fields['manifest'] = workflow.manifest
+  email_fields['summary'] = summary
+
+  email_info = ""
+  for (s in email_fields) {
+        email_info += "\n${s.key}: ${s.value}"
+  }
+
+  def output_d = new File( "${params.outdir}/pipeline_info/" )
+  if( !output_d.exists() ) {
+      output_d.mkdirs()
+  }
+
+  def output_tf = new File( output_d, "pipeline_report.txt" )
+  output_tf.withWriter { w -> w << email_info }
+
+ // make txt template
+  def engine = new groovy.text.GStringTemplateEngine()
+
+  def tf = new File("$baseDir/assets/email_template.txt")
+  def txt_template = engine.createTemplate(tf).make(email_fields)
+  def email_txt = txt_template.toString()
+
+  // make email template
+  def hf = new File("$baseDir/assets/email_template.html")
+  def html_template = engine.createTemplate(hf).make(email_fields)
+  def email_html = html_template.toString()
+
+  def subject = "Virus Pipe run finished ($run_name)."
+
+  if (params.email) {
+
+        def mqc_report = null
+        try {
+                if (workflow.success && !params.skip_multiqc) {
+                        mqc_report = multiqc_report.getVal()
+                        if (mqc_report.getClass() == ArrayList){
+                                log.warn "[IKMB VirusPipe] Found multiple reports from process 'multiqc', will use only one"
+                                mqc_report = mqc_report[0]
+                        }
+                }
+        } catch (all) {
+                log.warn "[IKMB VirusPipe] Could not attach MultiQC report to summary email"
+        }
+
+        def smail_fields = [ email: params.email, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir", mqcFile: mqc_report, mqcMaxSize: params.maxMultiqcEmailFileSize.toBytes() ]
+        def sf = new File("$baseDir/assets/sendmail_template.txt")
+        def sendmail_template = engine.createTemplate(sf).make(smail_fields)
+        def sendmail_html = sendmail_template.toString()
+
+
+        try {
+          if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
+          // Try to send HTML e-mail using sendmail
+          [ 'sendmail', '-t' ].execute() << sendmail_html
+        } catch (all) {
+          // Catch failures and try with plaintext
+          [ 'mail', '-s', subject, params.email ].execute() << email_txt
+        }
+
+  }
+
+}
+
+
+
