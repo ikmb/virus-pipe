@@ -60,7 +60,6 @@ if (!REF.exists() ) {
 
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
-BLOOMFILTER_TARGET = params.bloomfilter_target
 
 KRAKEN2_DB = params.kraken2_db
 
@@ -89,6 +88,9 @@ log.info "========================================="
 // ********************
 // WORKFLOW STARTS HERE
 // ********************
+
+Channel.fromPath(REF)
+	.set { inputBloomMaker }
 
 Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your criteria!" }
@@ -122,6 +124,30 @@ process runFastp {
         """
 	
 }
+
+process runBloomMakerTarget {
+
+	label 'std'
+
+        publishDir "${OUTDIR}/Reference/Bloomfilter", mode: 'copy'
+
+	input:
+	file(reference) from inputBloomMaker
+
+	output:
+	set file(bf),file(txt) into refBloom
+
+	script:
+	base_name = reference.getBaseName()
+	bf = base_name + ".bf"
+	txt = base_name + ".txt"
+
+	"""
+		biobloommaker -p $base_name $reference
+	"""
+
+}
+
 
 // **********************
 // Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
@@ -183,6 +209,7 @@ process BloomfilterTarget {
 	publishDir "${OUTDIR}/${id}/Bloomfilter/Target", mode: 'copy'
 
 	input:
+	set file(bf),file(txt) from refBloom.collect()
         set id,file(left_reads),file(right_reads) from inputBioBloomTarget
 
         output:
@@ -195,7 +222,7 @@ process BloomfilterTarget {
         clean_reads = analysis + ".filtered.fastq.gz"
 
         """
-                biobloomcategorizer -p $analysis --gz_output -d -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_TARGET" $left_reads $right_reads | gzip > $clean_reads
+                biobloomcategorizer -p $analysis --gz_output -d -e -s 0.01 -t ${task.cpus} -f "$bf" $left_reads $right_reads | gzip > $clean_reads
         """
 }
 
@@ -207,6 +234,9 @@ process runKraken2 {
 	label 'kraken'
 
 	publishDir "${OUTDIR}/${id}/Taxonomy/", mode: 'copy'
+
+	when:
+	params.taxonomy
 
 	input:
 	set val(id),file(left),file(right) from inputKraken
@@ -265,6 +295,9 @@ process runPathoscopeMap {
 
 	label 'pathoscope'
 
+	when:
+	params.taxonomy
+
 	input:
 	set id,file(left_reads),file(right_reads) from inputPathoscopeMap
 
@@ -289,6 +322,9 @@ process runPathoscopeId {
 	label 'pathoscope'
 
 	publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
+
+	when:
+	params.taxonomy
 
 	input:
 	set id,file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
@@ -412,11 +448,10 @@ process runMD {
 	bai_md = bam_md + ".bai"
 
 	"""
-		samtools sort -n $bam | samtools fixmate -m - fix.bam
-		samtools sort -O BAM -o sorted.bam fix.bam
-		samtools markdup sorted.bam $bam_md
+		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
+		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - $bam_md
 		samtools index $bam_md
-		rm fix.bam sorted.bam* 
+		rm fix.bam 
 	"""
 
 }
@@ -440,12 +475,13 @@ process runCoverageStats {
 	coverage_stats = id + ".wgs_coverage.txt"
 
 	"""
-		picard -Xmx${task.memory.toGiga()}G CollectWgsMetrics \
-                I=$bam \
+		picard -Xmx${task.memory.toGiga()}G SortSam \
+		I=$bam O=/dev/stdout SORT_ORDER=coordinate | picard -Xmx${task.memory.toGiga()}G CollectWgsMetrics \
+                I=/dev/stdin \
        	        O=$coverage_stats \
                	R=$REF \
 		MINIMUM_MAPPING_QUALITY=5
-
+ 
 	"""
 	
 }
