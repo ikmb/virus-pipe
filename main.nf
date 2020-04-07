@@ -14,9 +14,8 @@ Required parameters:
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --run_name			Specify a name for this analysis run
---reference			A reference genome in fasta format to compare against
+--reference			A reference genome in fasta format to compare against (default: NC_045512.2.fa)
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
---mn_ref 			use the reference genome MN908947.3.fa
 --assemble			Assemble genomes de-novo
 --email				Specify email to send report to
 Output:
@@ -43,15 +42,9 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	if (params.mn_ref) {
-		REF = file("${baseDir}/assets/reference/MN908947.3.fa")
-		Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fa")
-		.set { FastaIndex }
-	} else {
-		REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
-                Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
-                .set { FastaIndex }
-	}
+	REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
+        Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+       .set { FastaIndex }
 }
 
 if (!REF.exists() ) {
@@ -72,6 +65,12 @@ run_name = ( params.run_name == false) ? "${workflow.sessionId}" : "${params.run
 if (params.run_name == false) {
         log.info "No run name was specified, using ${run_name} instead"
 }
+
+summary['Reference'] = REF
+summary['Kraken2DB'] = params.kraken2_db
+summary['PathoscopeDB'] = params.pathoscope_index_dir
+summary['HostBloomFilter'] = params.bloomfilter_host
+
 
 // Header log info
 log.info "========================================="
@@ -136,7 +135,8 @@ process runBloomMakerTarget {
 
 	output:
 	set file(bf),file(txt) into refBloom
-
+	file(reference)
+	
 	script:
 	base_name = reference.getBaseName()
 	bf = base_name + ".bf"
@@ -423,8 +423,10 @@ process runBwa {
 
 	"""
 		samtools dict $fasta > header.txt
-		bwa mem -H header.txt -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${REF}\\tCN:CCGA" -t ${task.cpus} $fasta $left $right | samtools sort -O bam -m 2G -@ 4 - > $bam
+		bwa mem -H header.txt -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${REF}\\tCN:CCGA" -t ${task.cpus} $fasta $left $right | samtools sort -O bam -m 2G -@ 4 - > mapped.bam
+		samtools view -b -o $bam -F 4 mapped.bam
 		samtools index $bam
+		rm mapped.bam
 	"""
 }
 
