@@ -471,19 +471,15 @@ process runCoverageStats {
 	set val(id),file(bam),file(bai) from inputBamStats
 
 	output:
-	set val(id),file(coverage_stats) into BamStats
+	file(global_dist) into BamStats
 
 	script:
-	coverage_stats = id + ".wgs_coverage.txt"
-
+	global_dist = id + ".mosdepth.global.dist.txt"
+	
 	"""
-		picard -Xmx${task.memory.toGiga()}G SortSam \
-		I=$bam O=/dev/stdout SORT_ORDER=coordinate | picard -Xmx${task.memory.toGiga()}G CollectWgsMetrics \
-                I=/dev/stdin \
-       	        O=$coverage_stats \
-               	R=$REF \
-		MINIMUM_MAPPING_QUALITY=5
- 
+
+		mosdepth -t ${task.cpus} $id $bam
+		
 	"""
 	
 }
