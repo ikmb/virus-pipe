@@ -11,9 +11,9 @@ dependencies:
   - multiqc=1.7
   - samtools=1.9
   - bcftools=1.9
-  - htslib=1.9 
+  - htslib=1.9
   - iva=1.0.9
   - freebayes=1.3.2
   - muscle
   - bbmap
-  - mosdepth=0.2.9
+  - mosdepth
