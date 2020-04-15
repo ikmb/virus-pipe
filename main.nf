@@ -243,15 +243,34 @@ process runKraken2 {
 
 	output:
 	set val(id),file(report) into KrakenReport
+	file(kraken_log)
 
 	script:
 	report = id + ".kraken2_report.txt"
+	kraken_log = id + ".kraken2.log"
 
 	"""
-		kraken2 --db $KRAKEN2_DB --threads ${task.cpus} --report $report $left $right 
+		kraken2 --db $KRAKEN2_DB --threads ${task.cpus} --output $kraken_log --report $report $left $right 
 	"""
 }
 
+process Kraken2Yaml {
+
+
+	input:
+	file(reports) from KrakenReport.collect()
+
+	output:
+	file(report_yaml) into KrakenYaml
+
+	script:
+	
+	report_yaml = "kraken_report_mqc.yaml"
+	"""
+		kraken2yaml.pl --outfile $report_yaml
+	"""
+
+}
 
 // **********************
 // Assemble reads, optionally with a reference
@@ -544,6 +563,7 @@ process runMultiQC {
 	file('*') from fastp_qc.collect().ifEmpty('')
 	file('*') from BamStats.collect().ifEmpty('')
 	file('*') from BloomReportTarget.collect().ifEmpty('')
+	file('*') from KrakenYaml.ifEmpty('')
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:

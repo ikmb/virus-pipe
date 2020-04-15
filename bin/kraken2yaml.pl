@@ -1,29 +1,30 @@
 #!/usr/bin/env perl
-# convert Kraken reports to MultiQC yaml format
 
 use strict;
 use Getopt::Long;
-
+use Cwd;
 my $usage = qq{
 perl my_script.pl
   Getting help:
     [--help]
 
-  Input:
-    [--report filename]
-		The name of the file to read. 
+
   Ouput:    
-    [--gff filename]
+    [--outfile filename]
         The name of the output file. By default the output is the
         standard output
 };
 
-my $report = undef;
+#my $outfile = "summary_mqc.yaml";
+my $outfile = undef;
+my $min_cov = 1;
+
 my $help;
 
 GetOptions(
     "help" => \$help,
-    "report=s" => \$report);
+    "min_cov=i" => \$min_cov,
+    "outfile=s" => \$outfile);
 
 # Print Help and exit
 if ($help) {
@@ -31,12 +32,57 @@ if ($help) {
     exit(0);
 }
 
-open (my $IN, '<', $report) or die "FATAL: Can't open file: $report for reading.\n$!\n";
+if ($outfile) {
+    open(STDOUT, ">$outfile") or die("Cannot open $outfile");
+}
 
-while (<$IN>) {
-	chomp;
-	my $line = $_;
+my %data;
+my $dir = getcwd;
 
-	my @elements = split("\t", $line);
+my $header = qq(
+id: 'kraken2_reports'
+section_name: 'Kraken2 Species Hits'
+plot_type: 'html'
+description: 'list abundant species identified in each sample. S: Species, S1: Subspecies (included in S)'
+data: |\n  <dl class="dl-horizontal">
+);
+
+printf $header . "\n";
+
+
+foreach my $file (glob("$dir/*.txt")) {
+
+	my $fh = IO::File->new();
+	$fh->open( $file );
+
+	my $f = (split "/" , $file)[-1];
+	my $lib = (split ".kraken" , $f)[0];
+	my $entry = "<dt>Library</dt><dd><samp>$lib</samp></dd>" ;
+
+        printf "    $entry\n";
+
+	foreach my $line (<$fh>) {
+
+		chomp($line);
+		my ($perc,$num_frag_tax,$num_frag_ass,$rank,$tax_id,$name) = split(/\t+/,$line);
+
+		next unless ($rank =~ /S.*/);
+		next if ($perc < $min_cov);
+
+		$name =~ s/^\s+|\s+$//g ;
+		$rank =~ s/^\s+|\s+$//g ;
+		my $tab = "";
+		if ($rank eq "S1") {
+			$tab = " ";
+		}
+		my $entry = "<dt>$perc</dt><dd><samp>$tab$rank:$name</samp></dd>" ;
+	        printf "    $entry\n";
+
+	}
+
+	close($fh);
 
 }
+
+printf "  </dl>\n";
+
