@@ -7,7 +7,7 @@ channels:
   - defaults
 dependencies:
   - fastp=0.20.0
-  - bwa=0.7.17
+  - bowtie2=2.3.5.1
   - multiqc=1.8
   - samtools=1.10
   - bcftools=1.10.2

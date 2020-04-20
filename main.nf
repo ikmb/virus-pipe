@@ -123,7 +123,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBwa )
+	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBowtie )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -413,7 +413,7 @@ process alignRef {
 // *********************
 // Create mapping index from reference genome
 // *********************
-process makeBwaIndex {
+process makeBowtieIndex {
 
        	label 'std'
 
@@ -421,48 +421,48 @@ process makeBwaIndex {
 	file(fasta) from FastaIndex
 
 	output:
-	set file(fasta),file(amb),file(ann),file(bwt),file(pac),file(sa) into BwaIndex
+	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) into BowtieIndex	
+
 		
 	script:
-	base_name = fasta.getName()
-	amb = base_name + ".amb"
-	ann = base_name + ".ann"
-	bwt = base_name + ".bwt"
-	pac = base_name + ".pac"
-	sa = base_name + ".sa"
+	base_name = $fasta.getBaseName()
+
+	i1 = base_name + ".1.bt2"
+	i2 = base_name + ".2.bt2"
+	i3 = base_name + ".3.bt2"
+	i4 = base_name + ".4.bt2"
+	r1 = base_name + ".rev.1.bt2"
+	r2 = base_name + ".rev.2.bt2"
 		
 	"""		
-		bwa index $fasta
+		bowtie2-build $fasta $fasta
 	"""
 }
 
 // **************************
 // align reads against reference genome
 // **************************
-process runBwa {
+process runBowtie {
 
        	label 'std'
 
 	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
 
 	input:
-	set val(sampleID),file(left),file(right) from inputBwa
-	set file(fasta),file(amb),file(ann),file(bwt),file(pac),file(sa) from BwaIndex.collect()
+	set val(sampleID),file(left),file(right) from inputBowtie
+	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) from BowtieIndex.collect()
 
 	output:
-	set val(sampleID),file(bam),file(bai) into bwaBam
+	set val(sampleID),file(bam),file(bai) into bowtieBam
 
 	script:
-	ref_name = REF.getBaseName()
+	ref_name = fasta.getBaseName()
 	bam = sampleID + "." + ref_name + ".aligned.bam"
 	bai = bam + ".bai"
 
 	"""
-		samtools dict $fasta > header.txt
-		bwa mem -H header.txt -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${REF}\\tCN:CCGA" -t ${task.cpus} $fasta $left $right | samtools sort -O bam -m 2G -@ 4 - > mapped.bam
-		samtools view -b -o $bam -F 4 mapped.bam
+		bowtie2 -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
 		samtools index $bam
-		rm mapped.bam
 	"""
 }
 
@@ -476,7 +476,7 @@ process runMD {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from bwaBam
+	set val(id),file(bam),file(bai) from bowtieBam
 
 	output:
 	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
