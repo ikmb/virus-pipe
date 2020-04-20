@@ -15,6 +15,7 @@ Required parameters:
 Optional parameters:
 --run_name			Specify a name for this analysis run
 --reference			A reference genome in fasta format to compare against (default: NC_045512.2.fa)
+--kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --assemble			Assemble genomes de-novo
 --email				Specify email to send report to
@@ -73,15 +74,29 @@ summary['HostBloomFilter'] = params.bloomfilter_host
 
 
 // Header log info
-log.info "========================================="
+log.info "IKMB ------------------------------------------------------------------------------"
+log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d8888b. d88888b "
+log.info "88    88   `88'   88  `8D 88    88 88'  YP        88  `8D   `88'   88  `8D 88'     "
+log.info "Y8    8P    88    88oobY' 88    88 `8bo.          88oodD'    88    88oodD' 88ooooo "
+log.info "`8b  d8'    88    88`8b   88    88   `Y8b. C8888D 88~~~      88    88~~~   88~~~~~ "
+log.info " `8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
+log.info "   YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
+log.info "==================================================================================="
 log.info "${workflow.manifest.description} v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
-log.info "Reference:             		${REF}"
+log.info "Viral reference:             	${REF}"
+log.info "Host DB:			${params.bloomfilter_host}"
+log.info "Virus DB:			${params.kraken2_db}"
+log.info "Assemble de-novo:		${params.assemble}"
+if (params.assemble) {
+	log.info "Assembly is guided:	${params.iva_guided}"
+	log.info "Align assembly:	${params.align}"
+}
 log.info "Command Line:                 $workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:             ${workflow.containerEngine}"
 }
-log.info "========================================="
+log.info "==================================================================================="
 
 
 // ********************
