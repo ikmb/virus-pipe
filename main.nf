@@ -198,6 +198,8 @@ process runDeinterlave {
 
 	label 'std'
 
+        publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
+
         input:
         set val(id),file(reads) from inputReformat
 
