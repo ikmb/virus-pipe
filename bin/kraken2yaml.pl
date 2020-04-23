@@ -67,16 +67,26 @@ foreach my $file (glob("$dir/*.txt")) {
 		my ($perc,$num_frag_tax,$num_frag_ass,$rank,$tax_id,$name) = split(/\t+/,$line);
 
 		next unless ($rank =~ /S.*/);
-		next if ($perc < $min_cov);
 
 		$name =~ s/^\s+|\s+$//g ;
-		$rank =~ s/^\s+|\s+$//g ;
-		my $tab = "";
-		if ($rank eq "S1") {
-			$tab = " ";
+                $rank =~ s/^\s+|\s+$//g ;
+                my $tab = "";
+                if ($rank eq "S1") {
+                	$tab = " ";
+                }
+		
+		if ($name =~ "Severe acute respiratory syndrome coronavirus 2") {
+				
+			my $entry = "<dt>$perc</dt><dd><samp>$tab$rank:$name</samp></dd>" ;
+                        printf "    $entry\n";
+	
+		} else {
+
+			next if ($perc < $min_cov);
+
+			my $entry = "<dt>$perc</dt><dd><samp>$tab$rank:$name</samp></dd>" ;
+	        	printf "    $entry\n";
 		}
-		my $entry = "<dt>$perc</dt><dd><samp>$tab$rank:$name</samp></dd>" ;
-	        printf "    $entry\n";
 
 	}
 

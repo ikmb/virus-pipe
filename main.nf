@@ -79,8 +79,8 @@ log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d88
 log.info "88    88   `88'   88  `8D 88    88 88'  YP        88  `8D   `88'   88  `8D 88'     "
 log.info "Y8    8P    88    88oobY' 88    88 `8bo.          88oodD'    88    88oodD' 88ooooo "
 log.info "`8b  d8'    88    88`8b   88    88   `Y8b. C8888D 88~~~      88    88~~~   88~~~~~ "
-log.info " `8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
-log.info "   YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
+log.info ".`8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
+log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
 log.info "==================================================================================="
 log.info "${workflow.manifest.description} v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
@@ -425,7 +425,7 @@ process makeBowtieIndex {
 
 		
 	script:
-	base_name = $fasta.getBaseName()
+	base_name = fasta.getBaseName()
 
 	i1 = base_name + ".1.bt2"
 	i2 = base_name + ".2.bt2"
@@ -435,7 +435,7 @@ process makeBowtieIndex {
 	r2 = base_name + ".rev.2.bt2"
 		
 	"""		
-		bowtie2-build $fasta $fasta
+		bowtie2-build $fasta $base_name
 	"""
 }
 
@@ -508,13 +508,18 @@ process runCoverageStats {
 
 	output:
 	file(global_dist) into BamStats
+	file(report)
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
+	sam_coverage = id + ".coverage.samtools.txt"
+	report = id + ".coverage.pdf"
 	
 	"""
 
 		mosdepth -t ${task.cpus} $id $bam
+		samtools depth -d $bam > $sam_coverage
+		bam2coverage_plot.R $sam_coverage $report
 		
 	"""
 	
