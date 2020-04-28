@@ -11,6 +11,7 @@ Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
 --reads                        Input reads as a set of one or more PE Illumina reads
+--pacbio 		       Pacbio subread movie file in BAM format
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --run_name			Specify a name for this analysis run
@@ -107,8 +108,128 @@ Channel.fromPath(REF)
 	.set { inputBloomMaker }
 
 Channel.fromFilePairs(params.reads, flat: true)
-	.ifEmpty { exit 1, "Did not find any reads matching your criteria!" }
 	.set { reads_fastp }
+
+Channel.fromPath(params.pacbio)
+	.set { pb_bam }
+
+pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
+
+process runMinimapIndex {
+
+	input:
+	path fasta from fasta_index
+
+	output:
+	set path(fasta),path(index) into minimap_index
+
+	script:
+
+	index = fasta.getBaseName() + ".mmi"
+
+	"""
+		minimap2 -d $index $fasta
+	"""	
+}
+
+process runLima {
+
+	input:
+	path pb_read from pb_reads
+
+	output:
+	path "*.bam*" into pb_reads_demux
+	path "*pbi" into pb_reads_demux_index
+	script:
+	
+	prefix = pb_read.getBaseName() + ".demux"
+	"""
+		lima --num-threads ${task.cpus} --split-bam-named --same $pb_read $pb_barcodes $prefix 
+	"""
+
+}
+
+// remove empty barcodes
+pb_reads_demux_valid = pb_reads_demux.join(pb_reads_demux_index).filter { b,i -> b.size() > 200000 }
+
+process bam2fasta {
+
+        input:
+        set path(bam),path(pbi) pb_reads_demux_valid
+
+        output:
+        path fasta into pb_reads_clean
+
+        script:
+        base_name = bam.getBaseName()
+        fasta = base_name + ".fasta.gz"
+
+        """
+                bam2fasta -o $base_name $bam
+        """
+
+}
+
+process runFlye {
+
+        publishDir "${params.outdir}/flye/${lib}", mode: 'copy'
+
+        input:
+        path fasta from pb_reads_clean
+
+        output:
+        path assembly optional true into flye_assemblies
+        path assembly_stats optional true
+
+        script:
+        lib = fasta.getBaseName()
+        assembly = "outdir/assembly.fasta"
+        assembly_stats = "outdir/assembly_info.txt"
+
+        """
+                 flye --pacbio-raw $fasta --genome-size 30k --threads ${task.cpus} --out-dir outdir 2>&1 || true
+        """
+}
+
+process runCss {
+
+	input:
+	set path(bam),path(pbi) from pb_reads_demux_valid
+
+	output:
+	path(css) into css_reads_bam
+	path(fasta) into css_reads_fasta
+
+	script:
+	base_name = bam.getBaseName()
+	css = base_name + ".css.bam"
+	fasta = css.getBaseName() + ".fasta.gz"
+
+	"""
+		css $bam $css
+		bam2fasta -o $base_name $css
+	"""
+}
+
+process alignPacbio {
+
+	input:
+	path fa_reads from css_reads_fasta
+
+	output:
+	path bam into pacbio_align
+	set path(fasta),path(index) from minimap_index.collect()
+	
+	script:
+
+	bam = fasta.getBasename() + ".align.bam"
+
+	"""
+		minimap2 -ax asm20 $fasta $fa_reads | samtoos -bh - | samtools sort -o $bam -
+	"""
+
+}
+
 
 // **********************
 // Perform read-trimming

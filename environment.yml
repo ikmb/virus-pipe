@@ -19,3 +19,8 @@ dependencies:
   - mosdepth=0.2.9
   - r-base=3.5.3
   - r-tidyverse
+  - lima
+  - pbccs
+  - flye=2.7.1
+  - minimap2=2.17
+
