@@ -15,7 +15,7 @@ Required parameters:
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --run_name			Specify a name for this analysis run
---reference			A reference genome in fasta format to compare against (default: NC_045512.2.fa)
+--reference			A reference genome in fasta format to compare against (default: MN908947.3.fasta)
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --assemble			Assemble genomes de-novo
@@ -44,8 +44,8 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
-        Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+	REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
+        Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fasta")
        .set { FastaIndex }
 }
 
@@ -105,20 +105,32 @@ log.info "======================================================================
 // ********************
 
 Channel.fromPath(REF)
-	.set { inputBloomMaker }
+	.into { inputBloomMaker; fasta_index }
 
-Channel.fromFilePairs(params.reads, flat: true)
+if (params.reads) {
+	Channel.fromFilePairs(params.reads, flat: true)
 	.set { reads_fastp }
+} else {
+	reads_fastp = Channel.empty()
+}
 
-Channel.fromPath(params.pacbio)
-	.set { pb_bam }
+if (params.pacbio) {
+	Channel.fromPath(params.pacbio)
+	.set { pb_reads }
+} else {
+	pb_reads = Channel.empty()
+}
 
 pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
+primers = file("${baseDir}/assets/primers/Eden_Sydney.fasta")
 
 process runMinimapIndex {
 
 	input:
 	path fasta from fasta_index
+	
+	when:
+	params.pacbio
 
 	output:
 	set path(fasta),path(index) into minimap_index
@@ -131,6 +143,10 @@ process runMinimapIndex {
 		minimap2 -d $index $fasta
 	"""	
 }
+
+// ***************************
+// PACBIO WORFKLOW
+// ***************************
 
 process runLima {
 
@@ -150,12 +166,12 @@ process runLima {
 }
 
 // remove empty barcodes
-pb_reads_demux_valid = pb_reads_demux.join(pb_reads_demux_index).filter { b,i -> b.size() > 200000 }
+pb_reads_demux.join(pb_reads_demux_index).filter { b,i -> b.size() > 200000 }.into { pb_reads_demux_valid_fasta; pb_reads_demux_valid_css }
 
 process bam2fasta {
 
         input:
-        set path(bam),path(pbi) pb_reads_demux_valid
+        set path(bam),path(pbi) from pb_reads_demux_valid_fasta
 
         output:
         path fasta into pb_reads_clean
@@ -194,7 +210,7 @@ process runFlye {
 process runCss {
 
 	input:
-	set path(bam),path(pbi) from pb_reads_demux_valid
+	set path(bam),path(pbi) from pb_reads_demux_valid_css
 
 	output:
 	path(css) into css_reads_bam
@@ -215,24 +231,46 @@ process alignPacbio {
 
 	input:
 	path fa_reads from css_reads_fasta
+        set path(fasta),path(index) from minimap_index.collect()
 
 	output:
-	path bam into pacbio_align
-	set path(fasta),path(index) from minimap_index.collect()
+	set val(lib_name),path(bam),path(bai) into (pacbioBam_fb,pacbioBam)
 	
 	script:
-
-	bam = fasta.getBasename() + ".align.bam"
+	lib_name = fasta.getBaseName()
+	bam = lib_name + ".align.bam"
+	bai = bam + ".bai"
 
 	"""
-		minimap2 -ax asm20 $fasta $fa_reads | samtoos -bh - | samtools sort -o $bam -
+		minimap2 -t ${task.cpus} -ax asm20 $fasta $fa_reads | samtoos -bh - | samtools sort -o $bam -
+		samtools index $bam
 	"""
 
 }
 
+process callVariantsPb {
+
+	publishDir "${params.outdir}/pacbio", mode: 'copy'
+
+	input:
+	set val(lib_name),path(bam),path(bai) from pacbioBam_fb
+
+	output:
+	path vcf into pacbio_variants
+
+	script:
+
+	vcf = bam.getBaseName() . ".vcf"
+
+	"""
+		samtools index $bam
+		freebayes --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+	"""
+
+}
 
 // **********************
-// Perform read-trimming
+// ILLUMINA WORKFLOW
 // **********************
 process runFastp {
 
@@ -255,7 +293,7 @@ process runFastp {
         html = fastqR1.getBaseName() + ".fastp.html"
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
@@ -587,6 +625,8 @@ process runBowtie {
 	"""
 }
 
+all_bams = bowtieBam.concat(pacbioBam)
+
 // ***********************
 // Mark duplicate reads
 // ***********************
@@ -597,7 +637,7 @@ process runMD {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from bowtieBam
+	set val(id),file(bam),file(bai) from all_bams
 
 	output:
 	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
@@ -639,7 +679,7 @@ process runCoverageStats {
 	"""
 
 		mosdepth -t ${task.cpus} $id $bam
-		samtools depth -d $bam > $sam_coverage
+		samtools depth -d 200  $bam > $sam_coverage
 		bam2coverage_plot.R $sam_coverage $report
 		
 	"""
