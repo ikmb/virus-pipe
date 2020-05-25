@@ -453,7 +453,7 @@ process Kraken2Yaml {
 // **********************
 process runIva {
 
-        label 'std'
+        label 'iva'
 
         publishDir "${OUTDIR}/${id}/Assembly/Iva", mode: 'copy'
 
