@@ -11,10 +11,11 @@ Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
 --reads                        Input reads as a set of one or more PE Illumina reads
+--pacbio 		       Pacbio subread movie file in BAM format
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --run_name			Specify a name for this analysis run
---reference			A reference genome in fasta format to compare against (default: NC_045512.2.fa)
+--reference			A reference genome in fasta format to compare against (default: MN908947.3.fasta)
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --assemble			Assemble genomes de-novo
@@ -43,8 +44,8 @@ if (params.reference) {
 		.set { FastaIndex }
 
 } else {
-	REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
-        Channel.fromPath("${baseDir}/assets/reference/NC_045512.2.fa")
+	REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
+        Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fasta")
        .set { FastaIndex }
 }
 
@@ -79,8 +80,8 @@ log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d88
 log.info "88    88   `88'   88  `8D 88    88 88'  YP        88  `8D   `88'   88  `8D 88'     "
 log.info "Y8    8P    88    88oobY' 88    88 `8bo.          88oodD'    88    88oodD' 88ooooo "
 log.info "`8b  d8'    88    88`8b   88    88   `Y8b. C8888D 88~~~      88    88~~~   88~~~~~ "
-log.info " `8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
-log.info "   YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
+log.info ".`8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
+log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
 log.info "==================================================================================="
 log.info "${workflow.manifest.description} v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
@@ -104,14 +105,172 @@ log.info "======================================================================
 // ********************
 
 Channel.fromPath(REF)
-	.set { inputBloomMaker }
+	.into { inputBloomMaker; fasta_index }
 
-Channel.fromFilePairs(params.reads, flat: true)
-	.ifEmpty { exit 1, "Did not find any reads matching your criteria!" }
+if (params.reads) {
+	Channel.fromFilePairs(params.reads, flat: true)
 	.set { reads_fastp }
+} else {
+	reads_fastp = Channel.empty()
+}
+
+if (params.pacbio) {
+	Channel.fromPath(params.pacbio)
+	.set { pb_reads }
+} else {
+	pb_reads = Channel.empty()
+}
+
+pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
+primers = file("${baseDir}/assets/primers/Eden_Sydney.fasta")
+
+process runMinimapIndex {
+
+	input:
+	path fasta from fasta_index
+	
+	when:
+	params.pacbio
+
+	output:
+	set path(fasta),path(index) into minimap_index
+
+	script:
+
+	index = fasta.getBaseName() + ".mmi"
+
+	"""
+		minimap2 -d $index $fasta
+	"""	
+}
+
+// ***************************
+// PACBIO WORFKLOW
+// ***************************
+
+process runLima {
+
+	input:
+	path pb_read from pb_reads
+
+	output:
+	path "*.bam*" into pb_reads_demux
+	path "*pbi" into pb_reads_demux_index
+	script:
+	
+	prefix = pb_read.getBaseName() + ".demux"
+	"""
+		lima --num-threads ${task.cpus} --split-bam-named --same $pb_read $pb_barcodes $prefix 
+	"""
+
+}
+
+// remove empty barcodes
+pb_reads_demux.join(pb_reads_demux_index).filter { b,i -> b.size() > 200000 }.into { pb_reads_demux_valid_fasta; pb_reads_demux_valid_css }
+
+process bam2fasta {
+
+        input:
+        set path(bam),path(pbi) from pb_reads_demux_valid_fasta
+
+        output:
+        path fasta into pb_reads_clean
+
+        script:
+        base_name = bam.getBaseName()
+        fasta = base_name + ".fasta.gz"
+
+        """
+                bam2fasta -o $base_name $bam
+        """
+
+}
+
+process runFlye {
+
+        publishDir "${params.outdir}/flye/${lib}", mode: 'copy'
+
+        input:
+        path fasta from pb_reads_clean
+
+        output:
+        path assembly optional true into flye_assemblies
+        path assembly_stats optional true
+
+        script:
+        lib = fasta.getBaseName()
+        assembly = "outdir/assembly.fasta"
+        assembly_stats = "outdir/assembly_info.txt"
+
+        """
+                 flye --pacbio-raw $fasta --genome-size 30k --threads ${task.cpus} --out-dir outdir 2>&1 || true
+        """
+}
+
+process runCss {
+
+	input:
+	set path(bam),path(pbi) from pb_reads_demux_valid_css
+
+	output:
+	path(css) into css_reads_bam
+	path(fasta) into css_reads_fasta
+
+	script:
+	base_name = bam.getBaseName()
+	css = base_name + ".css.bam"
+	fasta = css.getBaseName() + ".fasta.gz"
+
+	"""
+		css $bam $css
+		bam2fasta -o $base_name $css
+	"""
+}
+
+process alignPacbio {
+
+	input:
+	path fa_reads from css_reads_fasta
+        set path(fasta),path(index) from minimap_index.collect()
+
+	output:
+	set val(lib_name),path(bam),path(bai) into (pacbioBam_fb,pacbioBam)
+	
+	script:
+	lib_name = fasta.getBaseName()
+	bam = lib_name + ".align.bam"
+	bai = bam + ".bai"
+
+	"""
+		minimap2 -t ${task.cpus} -ax asm20 $fasta $fa_reads | samtoos -bh - | samtools sort -o $bam -
+		samtools index $bam
+	"""
+
+}
+
+process callVariantsPb {
+
+	publishDir "${params.outdir}/pacbio", mode: 'copy'
+
+	input:
+	set val(lib_name),path(bam),path(bai) from pacbioBam_fb
+
+	output:
+	path vcf into pacbio_variants
+
+	script:
+
+	vcf = bam.getBaseName() . ".vcf"
+
+	"""
+		samtools index $bam
+		freebayes --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+	"""
+
+}
 
 // **********************
-// Perform read-trimming
+// ILLUMINA WORKFLOW
 // **********************
 process runFastp {
 
@@ -123,7 +282,7 @@ process runFastp {
         set val(id), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBwa )
+	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBowtie )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -134,7 +293,7 @@ process runFastp {
         html = fastqR1.getBaseName() + ".fastp.html"
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
@@ -413,7 +572,7 @@ process alignRef {
 // *********************
 // Create mapping index from reference genome
 // *********************
-process makeBwaIndex {
+process makeBowtieIndex {
 
        	label 'std'
 
@@ -421,50 +580,52 @@ process makeBwaIndex {
 	file(fasta) from FastaIndex
 
 	output:
-	set file(fasta),file(amb),file(ann),file(bwt),file(pac),file(sa) into BwaIndex
+	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) into BowtieIndex	
+
 		
 	script:
-	base_name = fasta.getName()
-	amb = base_name + ".amb"
-	ann = base_name + ".ann"
-	bwt = base_name + ".bwt"
-	pac = base_name + ".pac"
-	sa = base_name + ".sa"
+	base_name = fasta.getBaseName()
+
+	i1 = base_name + ".1.bt2"
+	i2 = base_name + ".2.bt2"
+	i3 = base_name + ".3.bt2"
+	i4 = base_name + ".4.bt2"
+	r1 = base_name + ".rev.1.bt2"
+	r2 = base_name + ".rev.2.bt2"
 		
 	"""		
-		bwa index $fasta
+		bowtie2-build $fasta $base_name
 	"""
 }
 
 // **************************
 // align reads against reference genome
 // **************************
-process runBwa {
+process runBowtie {
 
        	label 'std'
 
 	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
 
 	input:
-	set val(sampleID),file(left),file(right) from inputBwa
-	set file(fasta),file(amb),file(ann),file(bwt),file(pac),file(sa) from BwaIndex.collect()
+	set val(sampleID),file(left),file(right) from inputBowtie
+	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) from BowtieIndex.collect()
 
 	output:
-	set val(sampleID),file(bam),file(bai) into bwaBam
+	set val(sampleID),file(bam),file(bai) into bowtieBam
 
 	script:
-	ref_name = REF.getBaseName()
+	ref_name = fasta.getBaseName()
 	bam = sampleID + "." + ref_name + ".aligned.bam"
 	bai = bam + ".bai"
 
 	"""
-		samtools dict $fasta > header.txt
-		bwa mem -H header.txt -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${REF}\\tCN:CCGA" -t ${task.cpus} $fasta $left $right | samtools sort -O bam -m 2G -@ 4 - > mapped.bam
-		samtools view -b -o $bam -F 4 mapped.bam
+		bowtie2 -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
 		samtools index $bam
-		rm mapped.bam
 	"""
 }
+
+all_bams = bowtieBam.concat(pacbioBam)
 
 // ***********************
 // Mark duplicate reads
@@ -476,10 +637,10 @@ process runMD {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from bwaBam
+	set val(id),file(bam),file(bai) from all_bams
 
 	output:
-	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
+	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats, inputBamCoverage )
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -504,20 +665,46 @@ process runCoverageStats {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from inputBamStats
+	set val(id),file(bam),file(bai) from inputBamStats.filter{ i,b,d -> b.size() > 10000 }
 
 	output:
 	file(global_dist) into BamStats
+	file(report)
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
+	sam_coverage = id + ".coverage.samtools.txt"
+	report = id + ".coverage.pdf"
 	
 	"""
 
 		mosdepth -t ${task.cpus} $id $bam
+		samtools depth -d 200  $bam > $sam_coverage
+		bam2coverage_plot.R $sam_coverage $report
 		
 	"""
 	
+}
+
+process runAlignStats {
+
+        label 'std'
+
+        publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'
+
+        input:
+        set val(sampleID),file(bam),file(bai) from inputBamCoverage
+
+	output:
+	file(align_stats) into BamAlignStats
+
+	script:
+	align_stats = sampleID + ".txt"
+
+	"""
+		samtools stats  $bam > $align_stats
+	"""
+
 }
 
 // ************************
@@ -581,6 +768,7 @@ process runMultiQC {
 	file('*') from BamStats.collect().ifEmpty('')
 	file('*') from BloomReportTarget.collect().ifEmpty('')
 	file('*') from KrakenYaml.ifEmpty('')
+	file('*') from BamAlignStats.collect()
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
