@@ -640,7 +640,7 @@ process runMD {
 	set val(id),file(bam),file(bai) from all_bams
 
 	output:
-	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats )
+	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats, inputBamCoverage )
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -665,7 +665,7 @@ process runCoverageStats {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from inputBamStats
+	set val(id),file(bam),file(bai) from inputBamStats.filter{ i,b,d -> b.size() > 10000 }
 
 	output:
 	file(global_dist) into BamStats
@@ -684,6 +684,27 @@ process runCoverageStats {
 		
 	"""
 	
+}
+
+process runAlignStats {
+
+        label 'std'
+
+        publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'
+
+        input:
+        set val(sampleID),file(bam),file(bai) from inputBamCoverage
+
+	output:
+	file(align_stats) into BamAlignStats
+
+	script:
+	align_stats = sampleID + ".txt"
+
+	"""
+		samtools stats  $bam > $align_stats
+	"""
+
 }
 
 // ************************
@@ -747,6 +768,7 @@ process runMultiQC {
 	file('*') from BamStats.collect().ifEmpty('')
 	file('*') from BloomReportTarget.collect().ifEmpty('')
 	file('*') from KrakenYaml.ifEmpty('')
+	file('*') from BamAlignStats.collect()
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:

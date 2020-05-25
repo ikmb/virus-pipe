@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 library(tidyverse)
 
 args = commandArgs(trailingOnly=TRUE)
