@@ -461,7 +461,7 @@ process runIva {
 	params.assemble
 
 	input:
-	set val(id),file(reads) from inputIva.filter{ i,r -> r.size() > 500000 }
+	set val(id),file(reads) from inputIva.filter{ i,r -> r.size() > 900000 }
 
 	output:
 	set val(id),file(contigs) into ( contigsIva, contigsAlign)
@@ -478,7 +478,7 @@ process runIva {
 
 	println reads.size()
 	"""
-		iva --fr $reads -t ${task.cpus} $options $outdir
+		iva --seed_ext_min_cov 1 --seed_min_kmer_cov 10 --fr $reads -t ${task.cpus} $options $outdir
 	"""
 
 }
