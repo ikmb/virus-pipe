@@ -16,8 +16,8 @@ Required parameters:
 Optional parameters:
 --run_name			Specify a name for this analysis run
 --reference			A reference genome in fasta format to compare against (default: MN908947.3.fasta)
+--gff				A GFF annotation for the custom reference
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
---iva_guided			Perform reference-guided instead of de-novo (default: false - experimental and may crash)
 --assemble			Assemble genomes de-novo
 --email				Specify email to send report to
 Output:
@@ -25,6 +25,9 @@ Output:
 """
 
 params.help = false
+
+/*
+*/
 
 // Show help when needed
 if (params.help){
@@ -34,7 +37,7 @@ if (params.help){
 
 def summary = [:]
 
-// Enable reference-based analyses like variant calling
+// Enable custom reference-based analyses like variant calling
 if (params.reference) {
 	REF = file(params.reference)
 	if (!REF.exists() ) {
@@ -43,14 +46,30 @@ if (params.reference) {
 	Channel.fromPath(params.reference)
 		.set { FastaIndex }
 
+	if (params.assemble && !params.gff) {
+		exit 1, "Must provide a matching GFF file to your custom reference (--gff)"
+	}
+	if (params.gff) {
+		REF_GFF = file(params.gff)
+	}
+
 } else {
 	REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
+	REF_GFF = file("${baseDir}/assets/reference/MN908947.3.gff")
         Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fasta")
        .set { FastaIndex }
 }
 
 if (!REF.exists() ) {
 	exit 1, "Could not find reference file..."
+}
+
+
+pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
+if (params.primers) {
+        primers = file(params.primers)
+} else {
+        primers = file("${baseDir}/assets/primers/Eden_Sydney.fasta")
 }
 
 // set basic global options like location of database files
@@ -90,9 +109,9 @@ log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
 if (params.assemble) {
-	log.info "Assembly is guided:	${params.iva_guided}"
-	log.info "Align assembly:	${params.align}"
+	log.info "Align assembly:			${params.align}"
 }
+log.info "Primer to trimming:		${primers}"
 log.info "Command Line:                 $workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:             ${workflow.containerEngine}"
@@ -120,9 +139,6 @@ if (params.pacbio) {
 } else {
 	pb_reads = Channel.empty()
 }
-
-pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
-primers = file("${baseDir}/assets/primers/Eden_Sydney.fasta")
 
 process runMinimapIndex {
 
@@ -194,7 +210,7 @@ process runFlye {
         path fasta from pb_reads_clean
 
         output:
-        path assembly optional true into flye_assemblies
+        set val(lib),path(assembly) optional true into flye_assemblies
         path assembly_stats optional true
 
         script:
@@ -389,7 +405,7 @@ process BloomfilterTarget {
         set id,file(left_reads),file(right_reads) from inputBioBloomTarget
 
         output:
-        set id,file(clean_reads) into inputIva
+        set id,file(clean_reads) into inputSpades
         file(bloom) into BloomReportTarget
 
         script:
@@ -448,40 +464,64 @@ process Kraken2Yaml {
 
 }
 
-// **********************
-// Assemble reads, optionally with a reference
-// **********************
-process runIva {
+process runSpades {
 
-        label 'iva'
+	label 'spades'
 
-        publishDir "${OUTDIR}/${id}/Assembly/Iva", mode: 'copy'
+	publishDir "${OUTDIR}/${id}/Assembly/Spades", mode: 'copy'
 
 	when:
 	params.assemble
 
 	input:
-	set val(id),file(reads) from inputIva.filter{ i,r -> r.size() > 900000 }
+	set val(id),file(reads) from inputSpades.filter{ i,r -> r.size() > 500000 }
 
 	output:
-	set val(id),file(contigs) into ( contigsIva, contigsAlign)
+	set val(id),file(scaffolds) into contigsSpades
+	
+	script:
+	scaffolds = "spades/scaffolds.fasta"
+
+	"""
+		spades.py --12 $reads --trusted-contigs $REF -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+	"""
+}
+
+// **************************
+// Run assembly QC with QUAST
+// **************************
+
+contigsSpades.concat(flye_assemblies).into {assemblies; assemblies_qc }
+
+process runQuast {
+
+	label 'quast'
+
+	publishDir "${OUTDIR}/${id}/Assembly/Spades/QC", mode: 'copy'
+
+	input:
+	set val(id),path(assembly) from assemblies_qc
+
+	output:
+	path(report) into QuastReport
 
 	script:
+	named_assembly = id + ".fasta"
+	quast_dir = id + "_quast"
+	report = quast_dir
 
-	outdir = "iva_" + id
-	contigs = outdir + "/contigs.fasta"
-
-	def options = ""
-	if (params.iva_guided) {
-		options = "--reference $REF"
-	}
-
-	println reads.size()
 	"""
-		iva --seed_ext_min_cov 1 --seed_min_kmer_cov 10 --fr $reads -t ${task.cpus} $options $outdir
+		mv $assembly $named_assembly
+		quast $named_assembly -r $REF -g $REF_GFF
+		mkdir -p $quast_dir
+		
+		sed 's/_L/-L/' quast_results/latest/report.tsv > ${report}/report.tsv
+		
 	"""
-
 }
+/*
+*/
+
 
 // **********************
 // Run pathoscope MAP
@@ -552,7 +592,7 @@ process alignRef {
 	params.align
 
 	input:	
-	set val(id),file(contigs) from contigsAlign
+	set val(id),file(contigs) from assemblies
 
 	output:
 	set val(id),file(msa) into contigsMSA
@@ -582,7 +622,6 @@ process makeBowtieIndex {
 	output:
 	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) into BowtieIndex	
 
-		
 	script:
 	base_name = fasta.getBaseName()
 
@@ -620,7 +659,7 @@ process runBowtie {
 	bai = bam + ".bai"
 
 	"""
-		bowtie2 -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
+		bowtie2 --rg-id $sampleID --rg SM:${sampleID} --rg CN:CCGA -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
 		samtools index $bam
 	"""
 }
@@ -769,6 +808,7 @@ process runMultiQC {
 	file('*') from BloomReportTarget.collect().ifEmpty('')
 	file('*') from KrakenYaml.ifEmpty('')
 	file('*') from BamAlignStats.collect()
+	file('*') from QuastReport.collect().ifEmpty('')
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
@@ -780,7 +820,7 @@ process runMultiQC {
 		cp $baseDir/assets/multiqc_config.yaml multiqc_config.yaml
 		cp $params.logo .
 
-		multiqc *
+		multiqc *.* */report.tsv
 	"""
 
 }
