@@ -659,7 +659,7 @@ process runBowtie {
 	bai = bam + ".bai"
 
 	"""
-		bowtie2 --rg-id $sampleID --rg SM:${sampleID} --rg CN:CCGA -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
+		bowtie2 --rg-id $sampleID --rg PL:Illumina --rg SM:${sampleID} --rg CN:CCGA -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
 		samtools index $bam
 	"""
 }
