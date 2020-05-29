@@ -19,6 +19,7 @@ Optional parameters:
 --gff				A GFF annotation for the custom reference
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --assemble			Assemble genomes de-novo
+--guided 			Guide assembly with known reference
 --email				Specify email to send report to
 Output:
 --outdir                       Local directory to which all output is written (default: results)
@@ -102,7 +103,7 @@ log.info "`8b  d8'    88    88`8b   88    88   `Y8b. C8888D 88~~~      88    88~
 log.info ".`8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
 log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
 log.info "==================================================================================="
-log.info "${workflow.manifest.description} v${params.version}"
+log.info "${workflow.manifest.description}	v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
 log.info "Viral reference:             	${REF}"
 log.info "Host DB:			${params.bloomfilter_host}"
@@ -112,9 +113,9 @@ if (params.assemble) {
 	log.info "Align assembly:			${params.align}"
 }
 log.info "Primer to trimming:		${primers}"
-log.info "Command Line:                 $workflow.commandLine"
+log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
-        log.info "Container engine:             ${workflow.containerEngine}"
+        log.info "Container engine:		${workflow.containerEngine}"
 }
 log.info "==================================================================================="
 
@@ -482,8 +483,13 @@ process runSpades {
 	script:
 	scaffolds = "spades/scaffolds.fasta"
 
+	def options = ""
+	if (params.guided) {
+		options = "--trusted-contigs ${REF}"
+	}
+
 	"""
-		spades.py --12 $reads --trusted-contigs $REF -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+		spades.py --12 $reads $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
 	"""
 }
 
@@ -503,19 +509,19 @@ process runQuast {
 	set val(id),path(assembly) from assemblies_qc
 
 	output:
-	path(report) into QuastReport
+	path(quast_dir) into QuastReport
+	file("quast_results")
 
 	script:
 	named_assembly = id + ".fasta"
 	quast_dir = id + "_quast"
-	report = quast_dir
 
 	"""
-		mv $assembly $named_assembly
+		cp $assembly $named_assembly
 		quast $named_assembly -r $REF -g $REF_GFF
 		mkdir -p $quast_dir
 		
-		sed 's/_L/-L/' quast_results/latest/report.tsv > ${report}/report.tsv
+		sed 's/_L/-L/' quast_results/latest/report.tsv > ${quast_dir}/report.tsv
 		
 	"""
 }
