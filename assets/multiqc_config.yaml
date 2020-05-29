@@ -18,3 +18,10 @@ report_header_info:
 
 top_modules:
     - 'general_stats'
+
+quast_config:
+  contig_length_multiplier: 0.001
+  contig_length_suffix: 'Kbp'
+  total_length_multiplier: 0.001
+  total_length_suffix: 'Kbp'
+  total_number_contigs_multiplier: 1
