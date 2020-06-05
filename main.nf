@@ -15,12 +15,11 @@ Required parameters:
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --run_name			Specify a name for this analysis run
---reference			A reference genome in fasta format to compare against (default: MN908947.3.fasta)
---gff				A GFF annotation for the custom reference
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --assemble			Assemble genomes de-novo
 --guided 			Guide assembly with known reference
 --email				Specify email to send report to
+--primers			Primers used for amplification of genome fragments (default: Eden)
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -38,33 +37,15 @@ if (params.help){
 
 def summary = [:]
 
-// Enable custom reference-based analyses like variant calling
-if (params.reference) {
-	REF = file(params.reference)
-	if (!REF.exists() ) {
-		exit 1, "Reference file not found!"
-	}
-	Channel.fromPath(params.reference)
-		.set { FastaIndex }
+REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
+REF_GFF = file("${baseDir}/assets/reference/MN908947.3.gff")
+REF_NAME = "MN908947.3"
 
-	if (params.assemble && !params.gff) {
-		exit 1, "Must provide a matching GFF file to your custom reference (--gff)"
-	}
-	if (params.gff) {
-		REF_GFF = file(params.gff)
-	}
+REF_WITH_HOST = file(params.ref_with_host)
 
-} else {
-	REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
-	REF_GFF = file("${baseDir}/assets/reference/MN908947.3.gff")
-        Channel.fromPath("${baseDir}/assets/reference/MN908947.3.fasta")
-       .set { FastaIndex }
-}
-
-if (!REF.exists() ) {
-	exit 1, "Could not find reference file..."
-}
-
+/*
+Primer sequences
+*/
 
 pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
 if (params.primers) {
@@ -82,9 +63,9 @@ PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
 
 OUTDIR = params.outdir
 
-run_name = ( params.run_name == false) ? "${workflow.sessionId}" : "${params.run_name}"
+run_name = ( !params.run_name) ? "${workflow.sessionId}" : "${params.run_name}"
 
-if (params.run_name == false) {
+if (!params.run_name ) {
         log.info "No run name was specified, using ${run_name} instead"
 }
 
@@ -125,7 +106,7 @@ log.info "======================================================================
 // ********************
 
 Channel.fromPath(REF)
-	.into { inputBloomMaker; fasta_index }
+	.set { inputBloomMaker }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -139,26 +120,6 @@ if (params.pacbio) {
 	.set { pb_reads }
 } else {
 	pb_reads = Channel.empty()
-}
-
-process runMinimapIndex {
-
-	input:
-	path fasta from fasta_index
-	
-	when:
-	params.pacbio
-
-	output:
-	set path(fasta),path(index) into minimap_index
-
-	script:
-
-	index = fasta.getBaseName() + ".mmi"
-
-	"""
-		minimap2 -d $index $fasta
-	"""	
 }
 
 // ***************************
@@ -248,7 +209,6 @@ process alignPacbio {
 
 	input:
 	path fa_reads from css_reads_fasta
-        set path(fasta),path(index) from minimap_index.collect()
 
 	output:
 	set val(lib_name),path(bam),path(bai) into (pacbioBam_fb,pacbioBam)
@@ -259,7 +219,7 @@ process alignPacbio {
 	bai = bam + ".bai"
 
 	"""
-		minimap2 -t ${task.cpus} -ax asm20 $fasta $fa_reads | samtoos -bh - | samtools sort -o $bam -
+		minimap2 -t ${task.cpus} -ax asm20 $REF_WITH_HOST $fa_reads | samtoos -bh - | samtools sort -o $bam -
 		samtools index $bam
 	"""
 
@@ -296,10 +256,10 @@ process runFastp {
 	scratch true
 
         input:
-        set val(id), file(fastqR1),file(fastqR2) from reads_fastp
+        set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
 
         output:
-	set val(id),file(left),file(right) into (inputBioBloomHost , inputBioBloomTarget, inputBowtie )
+	set val(sampleID),file(left),file(right) into inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputSpades
         set file(html),file(json) into fastp_qc
 
         script:
@@ -308,6 +268,7 @@ process runFastp {
         right = fastqR2.getBaseName() + "_trimmed.fastq.gz"
         json = fastqR1.getBaseName() + ".fastp.json"
         html = fastqR1.getBaseName() + ".fastp.html"
+
 
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
@@ -350,7 +311,7 @@ process BloomfilterHost {
 	publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
 
 	input:
-	set id,file(left_reads),file(right_reads) from inputBioBloomHost
+	set val(id),file(left_reads),file(right_reads) from inputBioBloomHost
 
 	output:
 	set id,file(clean_reads) into inputReformat
@@ -406,7 +367,7 @@ process BloomfilterTarget {
         set id,file(left_reads),file(right_reads) from inputBioBloomTarget
 
         output:
-        set id,file(clean_reads) into inputSpades
+        set id,file(clean_reads)
         file(bloom) into BloomReportTarget
 
         script:
@@ -475,7 +436,7 @@ process runSpades {
 	params.assemble
 
 	input:
-	set val(id),file(reads) from inputSpades.filter{ i,r -> r.size() > 500000 }
+	set val(id),file(left),file(right) from inputSpades
 
 	output:
 	set val(id),file(scaffolds) into contigsSpades
@@ -489,7 +450,7 @@ process runSpades {
 	}
 
 	"""
-		spades.py --12 $reads $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+		spades.py --meta --1 $left --2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
 	"""
 }
 
@@ -521,7 +482,7 @@ process runQuast {
 		quast $named_assembly -r $REF -g $REF_GFF
 		mkdir -p $quast_dir
 		
-		sed 's/_L/-L/' quast_results/latest/report.tsv > ${quast_dir}/report.tsv
+		sed 's/_L/-L/' quast_results/latest/report.tsv | sed 's/COV_/COV-/' > ${quast_dir}/report.tsv
 		
 	"""
 }
@@ -584,65 +545,6 @@ process runPathoscopeId {
 
 }
 
-
-// **********************
-// Align assembly against a reference genome
-// **********************
-process alignRef {
-
-       	label 'std'
-
-	publishDir "${OUTDIR}/${id}/Assembly/Iva/Alignment", mode: 'copy'
-	
-	when:
-	params.align
-
-	input:	
-	set val(id),file(contigs) from assemblies
-
-	output:
-	set val(id),file(msa) into contigsMSA
-
-	script:
-	ref_name = REF.getBaseName()
-	merged_fa = id + "." + ref_name + ".fa"
-	msa = merged_fa + ".aln"
-
-	"""	
-		cat $REF $contigs >> $merged_fa
-		muscle -in $merged_fa -out $msa -clwstrict
-	"""
-
-}
-
-// *********************
-// Create mapping index from reference genome
-// *********************
-process makeBowtieIndex {
-
-       	label 'std'
-
-	input:
-	file(fasta) from FastaIndex
-
-	output:
-	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) into BowtieIndex	
-
-	script:
-	base_name = fasta.getBaseName()
-
-	i1 = base_name + ".1.bt2"
-	i2 = base_name + ".2.bt2"
-	i3 = base_name + ".3.bt2"
-	i4 = base_name + ".4.bt2"
-	r1 = base_name + ".rev.1.bt2"
-	r2 = base_name + ".rev.2.bt2"
-		
-	"""		
-		bowtie2-build $fasta $base_name
-	"""
-}
-
 // **************************
 // align reads against reference genome
 // **************************
@@ -654,18 +556,17 @@ process runBowtie {
 
 	input:
 	set val(sampleID),file(left),file(right) from inputBowtie
-	set file(fasta),file(i1),file(i2),file(i3),file(i4),file(r1),file(r2) from BowtieIndex.collect()
 
 	output:
 	set val(sampleID),file(bam),file(bai) into bowtieBam
 
 	script:
-	ref_name = fasta.getBaseName()
+	ref_name = REF_WITH_HOST.getBaseName()
 	bam = sampleID + "." + ref_name + ".aligned.bam"
 	bai = bam + ".bai"
 
 	"""
-		bowtie2 --rg-id $sampleID --rg PL:Illumina --rg SM:${sampleID} --rg CN:CCGA -x $ref_name -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
+		bowtie2 --rg-id ${sampleID} --rg PL:Illumina --rg SM:${sampleID} --rg CN:CCGA -x $REF_WITH_HOST -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
 		samtools index $bam
 	"""
 }
@@ -685,16 +586,22 @@ process runMD {
 	set val(id),file(bam),file(bai) from all_bams
 
 	output:
-	set val(id),file(bam_md),file(bai_md) into ( bamMD, inputBamStats, inputBamCoverage )
+	set val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage )
+	set val(id),file(bam_md),file(bai_md)
 
 	script:
 	bam_md = id + ".dedup.bam"
 	bai_md = bam_md + ".bai"
+	bam_md_virus = id + ".dedup.viral_mapping.bam"
+	bai_md_virus = bam_md_virus + ".bai"
 
 	"""
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
 		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - $bam_md
 		samtools index $bam_md
+
+		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
+		samtools index $bam_md_virus
 		rm fix.bam 
 	"""
 
@@ -821,12 +728,15 @@ process runMultiQC {
 	file("multiqc_report.html") into multiqc_report
 
 	script:
-
+	def options = ""
+	if (params.assemble) {
+		options = "*/report.tsv"
+	}
 	"""
 		cp $baseDir/assets/multiqc_config.yaml multiqc_config.yaml
 		cp $params.logo .
 
-		multiqc *.* */report.tsv
+		multiqc *.* $options
 	"""
 
 }
