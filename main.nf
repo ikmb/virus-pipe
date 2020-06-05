@@ -86,14 +86,12 @@ log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88 
 log.info "==================================================================================="
 log.info "${workflow.manifest.description}	v${params.version}"
 log.info "Nextflow Version:             $workflow.nextflow.version"
+log.info "Mapping reference:		${params.ref_with_host}"
 log.info "Viral reference:             	${REF}"
 log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
-if (params.assemble) {
-	log.info "Align assembly:			${params.align}"
-}
-log.info "Primer to trimming:		${primers}"
+log.info "Primers for trimming:		${primers}"
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:		${workflow.containerEngine}"
@@ -214,7 +212,7 @@ process alignPacbio {
 	set val(lib_name),path(bam),path(bai) into (pacbioBam_fb,pacbioBam)
 	
 	script:
-	lib_name = fasta.getBaseName()
+	lib_name = fa_reads.getBaseName()
 	bam = lib_name + ".align.bam"
 	bai = bam + ".bai"
 
@@ -271,7 +269,7 @@ process runFastp {
 
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right -f ${params.trim_length} --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
@@ -587,7 +585,7 @@ process runMD {
 
 	output:
 	set val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage )
-	set val(id),file(bam_md),file(bai_md)
+	set val(id),file(bam_md),file(bai_md) into HostBam
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -610,6 +608,28 @@ process runMD {
 // ************************
 // Coverage statistics
 // ************************
+process runBamToBed {
+
+	label 'bedtools'
+
+	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
+
+	input:
+	set val(id),file(bam_md),file(bai_md) from HostBam
+
+	output:
+	file(bed) 
+
+	script:
+	
+	bed = bam_md.getBaseName() + ".Host.bed"
+
+	"""
+		bedtools bamtobed -i $bam_md | grep ^chr > $bed
+	"""
+
+}
+
 process runCoverageStats {
 	
 	label 'std'
