@@ -14,6 +14,8 @@ Required parameters:
 --pacbio 		       Pacbio subread movie file in BAM format
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
+--primer_set			Name of the primer set used (ARTIC-v3, Eden)
+--primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --assemble			Assemble genomes de-novo
@@ -48,11 +50,19 @@ Primer sequences
 */
 
 pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
-if (params.primers) {
-        primers = file(params.primers)
+
+// Selection of amplicon primers
+if (params.primer_fasta) {
+	primers = Channel.fromPath(file(params.primer_fasta))
+} else if (params.primer_set) {
+	if (params.primer_sets[params.primer_set]) {
+		primers = Channel.fromPath(params.primer_sets[params.primer_set].fasta)
 } else {
-        primers = file("${baseDir}/assets/primers/Eden_Sydney.fasta")
-}
+		exit 1, "Did not recognize primer set name"
+	}
+} else {
+	primers = Channel.empty()
+}  
 
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
@@ -74,7 +84,6 @@ summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
 summary['HostBloomFilter'] = params.bloomfilter_host
 
-
 // Header log info
 log.info "IKMB ------------------------------------------------------------------------------"
 log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d8888b. d88888b "
@@ -91,7 +100,11 @@ log.info "Viral reference:             	${REF}"
 log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
-log.info "Primers for trimming:		${primers}"
+if (params.primers) {
+	log.info "Primers for trimming:		${primers}"
+} else if (params.primer_set) {
+	log.info "Primers for trimming:		${params.primer_set}"
+}
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:		${workflow.containerEngine}"
@@ -247,6 +260,7 @@ process callVariantsPb {
 // **********************
 // ILLUMINA WORKFLOW
 // **********************
+
 process runFastp {
 
 	label 'std'
@@ -255,12 +269,17 @@ process runFastp {
 
         input:
         set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
+	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
-	set val(sampleID),file(left),file(right) into inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputSpades
+	set val(sampleID),file(left),file(right) into reads_ptrimmer
         set file(html),file(json) into fastp_qc
 
         script:
+	def options = ""
+	if (primer_fa) {
+		options = "--adapter_fasta " + primer_fa
+	}
 
         left = fastqR1.getBaseName() + "_trimmed.fastq.gz"
         right = fastqR2.getBaseName() + "_trimmed.fastq.gz"
@@ -269,10 +288,12 @@ process runFastp {
 
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right -f ${params.trim_length} --adapter_fasta $primers --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right -f ${params.trim_length} $options --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
+
+reads_ptrimmer.into { inputBowtie; inputBioBloomHost; inputBioBloomTarget; inputSpades }
 
 process runBloomMakerTarget {
 
@@ -297,7 +318,6 @@ process runBloomMakerTarget {
 	"""
 
 }
-
 
 // **********************
 // Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
