@@ -11,6 +11,14 @@ This pipeline can process Illumina short reads from sequenced viral cDNA, Metatr
 * assembly viral genome (optionally: guided against reference genome)
 * - align de-novo assembly against reference genome
 
+## Basic execution
+
+Assuming an config file exists (default = Medcluster of the IKMB), the following commend will start the pipeline (nextflow and singularity must be available in the PATH):
+
+`nextflow run ikmb/virus-pipe --reads '/path/to/*_R{1,2}_001.fastq.gz'`
+
+For more details on available options, see below.
+
 ## Available options and settings
 
 ### `--reads` 
@@ -19,7 +27,7 @@ Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{
 ### `--pacbio'
 Path to a Pacbio movie file containing subreads from a multiplexed sequencing run
 
-### `--primer_set` (default: ARTIV-v3)
+### `--primer_set` (default: ARTIC-v3)
 Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). 
 
 ### `--primer_fasta` (default: false)
@@ -30,6 +38,9 @@ Assemble the reads using Spades.
 
 ### `--guided` (default: false)
 Use the built-in Covid19 reference to guide assembly (this will likely inflate assembly metrics)
+
+### `--filter`(default: false)
+If this option is set, the trimmed reads will be run against a bloom filter to remove likely human reads prior to taxnomic assignment.
 
 ## Expert options
 

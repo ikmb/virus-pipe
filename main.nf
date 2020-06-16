@@ -272,7 +272,7 @@ process runFastp {
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
-	set val(sampleID),file(left),file(right) into reads_ptrimmer
+	set val(sampleID),file(left),file(right) into (inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputSpades )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -293,7 +293,6 @@ process runFastp {
 	
 }
 
-reads_ptrimmer.into { inputBowtie; inputBioBloomHost; inputBioBloomTarget; inputSpades }
 
 process runBloomMakerTarget {
 
@@ -319,56 +318,62 @@ process runBloomMakerTarget {
 
 }
 
-// **********************
-// Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
-// **********************
-process BloomfilterHost {
+if (params.filter) {
 
-        label 'std'
+	// **********************
+	// Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
+	// **********************
+	process BloomfilterHost {
 
-	publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
+        	label 'std'
 
-	input:
-	set val(id),file(left_reads),file(right_reads) from inputBioBloomHost
+		publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
 
-	output:
-	set id,file(clean_reads) into inputReformat
-	file(bloom) into BloomReportHost
+		input:
+		set val(id),file(left_reads),file(right_reads) from inputBioBloomHost
 
-	script:
-	analysis = id + ".Host" 
-	bloom = analysis + "_summary.tsv"
-	clean_reads = analysis + ".filtered.fastq.gz"
+		output:
+		set id,file(clean_reads) into inputReformat
+		file(bloom) into BloomReportHost
 
-	"""
-		biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
-	"""
+		script:
+		analysis = id + ".Host" 
+		bloom = analysis + "_summary.tsv"
+		clean_reads = analysis + ".filtered.fastq.gz"
 
-}
+		"""
+			biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
+		"""
 
-// *************************
-// Take the interlaved non-host reads and produce sane PE data 
-// *************************
-process runDeinterlave {
+	}
 
-	label 'std'
+	// *************************
+	// Take the interlaved non-host reads and produce sane PE data 
+	// *************************
+	process runDeinterlave {
 
-        publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
+		label 'std'
 
-        input:
-        set val(id),file(reads) from inputReformat
+	        publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
 
-        output:
-        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken )
+        	input:
+	        set val(id),file(reads) from inputReformat
 
-        script:
-        left = id + "_R1_001.bloom_non_host.fastq.gz"
-        right = id + "_R2_001.bloom_non_host.fastq.gz"
+        	output:
+	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken )
 
-        """
-                reformat.sh in=$reads out1=$left out2=$right addslash int
-        """
+        	script:
+	        left = id + "_R1_001.bloom_non_host.fastq.gz"
+        	right = id + "_R2_001.bloom_non_host.fastq.gz"
+	
+        	"""
+	                reformat.sh in=$reads out1=$left out2=$right addslash int
+        	"""
 
+	}
+
+} else {
+	inputBioBloomHost.into { inputKraken; inputPathoscopeMap }
 }
 
 // ************************
@@ -635,7 +640,7 @@ process runBamToBed {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam_md),file(bai_md) from HostBam
+	set val(id),file(bam_md),file(bai_md) from HostBam.filter { b -> b.size() > 80000 }
 
 	output:
 	file(bed) 
@@ -672,7 +677,7 @@ process runCoverageStats {
 
 		mosdepth -t ${task.cpus} $id $bam
 		samtools depth -d 200  $bam > $sam_coverage
-		bam2coverage_plot.R $sam_coverage $report
+		bam2coverage_plot.R $sam_coverage ${params.cov_lim} $report
 		
 	"""
 	
