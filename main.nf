@@ -11,7 +11,6 @@ Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
 --reads                        Input reads as a set of one or more PE Illumina reads
---pacbio 		       Pacbio subread movie file in BAM format
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --primer_set			Name of the primer set used (ARTIC-v3, Eden)
@@ -64,6 +63,11 @@ if (params.primer_fasta) {
 	primers = Channel.empty()
 }  
 
+if (params.guided && !params.assemble) {
+	log.info "Requested a guided assembly but did not actually enable assembly - will do that for you now!"
+	params.assemble = true
+}
+
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
 
@@ -93,17 +97,22 @@ log.info "`8b  d8'    88    88`8b   88    88   `Y8b. C8888D 88~~~      88    88~
 log.info ".`8bd8'    .88.   88 `88. 88b  d88 db   8D        88        .88.   88      88.     "
 log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88      Y88888P "
 log.info "==================================================================================="
-log.info "${workflow.manifest.description}	v${params.version}"
-log.info "Nextflow Version:             $workflow.nextflow.version"
+log.info "${workflow.manifest.description}		v${params.version}"
+log.info "Nextflow Version:             	$workflow.nextflow.version"
 log.info "Mapping reference:		${params.ref_with_host}"
 log.info "Viral reference:             	${REF}"
 log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
+if (params.assemble) {
+	log.info "Assemble guided:		${params.guided}"
+}
 if (params.primers) {
 	log.info "Primers for trimming:		${primers}"
 } else if (params.primer_set) {
 	log.info "Primers for trimming:		${params.primer_set}"
+} else {
+	log.info "No designated primers for trimming - only Illumina primers used"
 }
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
@@ -124,137 +133,6 @@ if (params.reads) {
 	.set { reads_fastp }
 } else {
 	reads_fastp = Channel.empty()
-}
-
-if (params.pacbio) {
-	Channel.fromPath(params.pacbio)
-	.set { pb_reads }
-} else {
-	pb_reads = Channel.empty()
-}
-
-// ***************************
-// PACBIO WORFKLOW
-// ***************************
-
-process runLima {
-
-	input:
-	path pb_read from pb_reads
-
-	output:
-	path "*.bam*" into pb_reads_demux
-	path "*pbi" into pb_reads_demux_index
-	script:
-	
-	prefix = pb_read.getBaseName() + ".demux"
-	"""
-		lima --num-threads ${task.cpus} --split-bam-named --same $pb_read $pb_barcodes $prefix 
-	"""
-
-}
-
-// remove empty barcodes
-pb_reads_demux.join(pb_reads_demux_index).filter { b,i -> b.size() > 200000 }.into { pb_reads_demux_valid_fasta; pb_reads_demux_valid_css }
-
-process bam2fasta {
-
-        input:
-        set path(bam),path(pbi) from pb_reads_demux_valid_fasta
-
-        output:
-        path fasta into pb_reads_clean
-
-        script:
-        base_name = bam.getBaseName()
-        fasta = base_name + ".fasta.gz"
-
-        """
-                bam2fasta -o $base_name $bam
-        """
-
-}
-
-process runFlye {
-
-        publishDir "${params.outdir}/flye/${lib}", mode: 'copy'
-
-        input:
-        path fasta from pb_reads_clean
-
-        output:
-        set val(lib),path(assembly) optional true into flye_assemblies
-        path assembly_stats optional true
-
-        script:
-        lib = fasta.getBaseName()
-        assembly = "outdir/assembly.fasta"
-        assembly_stats = "outdir/assembly_info.txt"
-
-        """
-                 flye --pacbio-raw $fasta --genome-size 30k --threads ${task.cpus} --out-dir outdir 2>&1 || true
-        """
-}
-
-process runCss {
-
-	input:
-	set path(bam),path(pbi) from pb_reads_demux_valid_css
-
-	output:
-	path(css) into css_reads_bam
-	path(fasta) into css_reads_fasta
-
-	script:
-	base_name = bam.getBaseName()
-	css = base_name + ".css.bam"
-	fasta = css.getBaseName() + ".fasta.gz"
-
-	"""
-		css $bam $css
-		bam2fasta -o $base_name $css
-	"""
-}
-
-process alignPacbio {
-
-	input:
-	path fa_reads from css_reads_fasta
-
-	output:
-	set val(lib_name),path(bam),path(bai) into (pacbioBam_fb,pacbioBam)
-	
-	script:
-	lib_name = fa_reads.getBaseName()
-	bam = lib_name + ".align.bam"
-	bai = bam + ".bai"
-
-	"""
-		minimap2 -t ${task.cpus} -ax asm20 $REF_WITH_HOST $fa_reads | samtoos -bh - | samtools sort -o $bam -
-		samtools index $bam
-	"""
-
-}
-
-process callVariantsPb {
-
-	publishDir "${params.outdir}/pacbio", mode: 'copy'
-
-	input:
-	set val(lib_name),path(bam),path(bai) from pacbioBam_fb
-
-	output:
-	path vcf into pacbio_variants
-
-	script:
-
-	vcf = bam.getBaseName() . ".vcf"
-
-	"""
-		samtools index $bam
-		freebayes --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
-	"""
-
 }
 
 // **********************
@@ -428,6 +306,9 @@ process runKraken2 {
 
 	"""
 		kraken2 --db $KRAKEN2_DB --threads ${task.cpus} --output $kraken_log --report $report $left $right 
+		if [ ! -f $report ]; then
+			touch $report
+		fi
 	"""
 }
 
@@ -473,7 +354,7 @@ process runSpades {
 	}
 
 	"""
-		spades.py --meta --1 $left --2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+		spades.py --rnavirus -1 $left -2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
 	"""
 }
 
@@ -481,7 +362,7 @@ process runSpades {
 // Run assembly QC with QUAST
 // **************************
 
-contigsSpades.concat(flye_assemblies).into {assemblies; assemblies_qc }
+contigsSpades.into {assemblies; assemblies_qc }
 
 process runQuast {
 
@@ -513,60 +394,57 @@ process runQuast {
 */
 
 
-// **********************
-// Run pathoscope MAP
-// **********************
-process runPathoscopeMap {
+if (params.pathoscope) {
+	// **********************
+	// Run pathoscope MAP
+	// **********************
+	process runPathoscopeMap {
 
-	label 'pathoscope'
+		label 'pathoscope'
 
-	when:
-	params.taxonomy
+		input:
+		set id,file(left_reads),file(right_reads) from inputPathoscopeMap
 
-	input:
-	set id,file(left_reads),file(right_reads) from inputPathoscopeMap
+		output:
+		set id,file(pathoscope_sam) into inputPathoscopeId
 
-	output:
-	set id,file(pathoscope_sam) into inputPathoscopeId
+		script:
+		pathoscope_sam = id + ".sam"
 
-	script:
-	pathoscope_sam = id + ".sam"
+		"""
+        		pathoscope MAP -1 $left_reads -2 $right_reads -indexDir $PATHOSCOPE_INDEX_DIR -filterIndexPrefixes hg19_rRNA \
+	        	-targetIndexPrefix A-Lbacteria.fa,M-Zbacteria.fa,virus.fa -outAlign $pathoscope_sam -expTag $id -numThreads ${task.cpus}
+		"""
 
-	"""
-        	pathoscope MAP -1 $left_reads -2 $right_reads -indexDir $PATHOSCOPE_INDEX_DIR -filterIndexPrefixes hg19_rRNA \
-	        -targetIndexPrefix A-Lbacteria.fa,M-Zbacteria.fa,virus.fa -outAlign $pathoscope_sam -expTag $id -numThreads ${task.cpus}
-	"""
+	}
 
-}
+	// **********************
+	// Run pathoscope ID
+	// **********************
+	process runPathoscopeId {
 
-// **********************
-// Run pathoscope ID
-// **********************
-process runPathoscopeId {
+		label 'pathoscope'
 
-	label 'pathoscope'
+		publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
 
-	publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
+		input:
+		set id,file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
 
-	when:
-	params.taxonomy
+		output:
+		set id,file(pathoscope_tsv) into outputPathoscopeId
 
-	input:
-	set id,file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
+		script:
 
-	output:
-	set id,file(pathoscope_tsv) into outputPathoscopeId
+		//pathoscope_sam = "updated_" + samfile
+		pathoscope_tsv = id + "-sam-report.tsv"
 
-	script:
+		"""
+        		pathoscope ID -alignFile $samfile -fileType sam -expTag $id
+		"""
 
-	//pathoscope_sam = "updated_" + samfile
-	pathoscope_tsv = id + "-sam-report.tsv"
+	}
 
-	"""
-        	pathoscope ID -alignFile $samfile -fileType sam -expTag $id
-	"""
-
-}
+} // end pathoscope
 
 // **************************
 // align reads against reference genome
@@ -594,8 +472,6 @@ process runBowtie {
 	"""
 }
 
-all_bams = bowtieBam.concat(pacbioBam)
-
 // ***********************
 // Mark duplicate reads
 // ***********************
@@ -606,7 +482,7 @@ process runMD {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from all_bams
+	set val(id),file(bam),file(bai) from bowtieBam
 
 	output:
 	set val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage )

@@ -4,7 +4,7 @@ LABEL authors="Marc Hoeppner" \
 
 COPY environment.yml /
 RUN conda env create -f /environment.yml && conda clean -a
-ENV PATH /opt/conda/envs/virus-pipe-1.0/bin:/opt/biobloom/bin:$PATH
+ENV PATH /opt/conda/envs/virus-pipe-1.0/bin:/opt/biobloom/bin:/opt/spades/3.15.0/bin:$PATH
 
 RUN apt-get update && apt-get -y install procps make gcc  git build-essential autotools-dev automake libsparsehash-dev libboost-all-dev \
 cmake zlib1g-dev coreutils grep gawk
@@ -20,3 +20,9 @@ RUN cd /opt && \
         ./configure --prefix=/opt/biobloom && make install && \
         cd /opt && rm -Rf biobloomtools-2.3.1
 
+RUN cd /opt && \
+	mkdir -p spades && cd spades && \
+	wget wget https://github.com/ablab/spades/releases/download/v3.15.0/SPAdes-3.15.0-Linux.tar.gz && \
+	tar -xvf SPAdes-3.15.0-Linux.tar.gz && rm *.tar.gz && \
+	mv SPAdes-3.15.0-Linux 3.15.0
+	

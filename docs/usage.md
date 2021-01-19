@@ -24,9 +24,6 @@ For more details on available options, see below.
 ### `--reads` 
 Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz)
 
-### `--pacbio'
-Path to a Pacbio movie file containing subreads from a multiplexed sequencing run
-
 ### `--primer_set` (default: ARTIC-v3)
 Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). 
 
