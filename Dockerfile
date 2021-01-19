@@ -22,7 +22,7 @@ RUN cd /opt && \
 
 RUN cd /opt && \
 	mkdir -p spades && cd spades && \
-	wget wget https://github.com/ablab/spades/releases/download/v3.15.0/SPAdes-3.15.0-Linux.tar.gz && \
+	wget https://github.com/ablab/spades/releases/download/v3.15.0/SPAdes-3.15.0-Linux.tar.gz && \
 	tar -xvf SPAdes-3.15.0-Linux.tar.gz && rm *.tar.gz && \
 	mv SPAdes-3.15.0-Linux 3.15.0
 	

@@ -332,7 +332,7 @@ process Kraken2Yaml {
 
 process runSpades {
 
-	label 'spades'
+	//label 'spades'
 
 	publishDir "${OUTDIR}/${id}/Assembly/Spades", mode: 'copy'
 
