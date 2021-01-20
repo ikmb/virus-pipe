@@ -24,6 +24,9 @@ For more details on available options, see below.
 ### `--reads` 
 Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz)
 
+### `--run_name`
+Provide a usefull name to this analysis run (could be the LIMS project ID)
+
 ### `--clip` (default: 6)
 Remove n bases from both 3' and 5' to account for fragmented amplicon primers that cannot be detected otherwise.
 

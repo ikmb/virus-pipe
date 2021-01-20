@@ -758,18 +758,19 @@ process MultiQC {
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
-	file("multiqc_report.html") into multiqc_report
+	file(report) into multiqc_report
 
 	script:
 	def options = ""
 	if (params.assemble) {
 		options = "*/report.tsv"
 	}
+	report = run_name + "_multiqc.html"
 	"""
 		cp $baseDir/assets/multiqc_config.yaml multiqc_config.yaml
 		cp $params.logo .
 
-		multiqc *.* $options
+		multiqc -n $report *.* $options
 	"""
 
 }
