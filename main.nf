@@ -14,6 +14,7 @@ Required parameters:
 --email                        Email address to send reports to (enclosed in '')
 Optional parameters:
 --primer_set			Name of the primer set used (ARTIC-v3, Eden)
+--clip				Remove x bases from both ends of the reads (default: 6)
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
@@ -68,6 +69,8 @@ if (params.guided && !params.assemble) {
 	params.assemble = true
 }
 
+host_genome = Channel.fromPath("${params.host_index}*")
+
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
 
@@ -114,6 +117,7 @@ if (params.primers) {
 } else {
 	log.info "No designated primers for trimming - only Illumina primers used"
 }
+log.info "Read clipping 3'/5'		${params.clip}"
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:		${workflow.containerEngine}"
@@ -141,16 +145,19 @@ if (params.reads) {
 
 process runFastp {
 
-	label 'std'
+	label 'fastp'
 
 	scratch true
+
+        publishDir "${OUTDIR}/${id}/RawReads", mode: 'copy'
+
 
         input:
         set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
-	set val(sampleID),file(left),file(right) into (inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputSpades )
+	set val(sampleID),file(left),file(right) into (inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputBowtieFilter )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -166,11 +173,10 @@ process runFastp {
 
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right -f ${params.trim_length} $options --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right $options -f $params.clip -t $params.clip --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
-
 
 process runBloomMakerTarget {
 
@@ -178,29 +184,67 @@ process runBloomMakerTarget {
 
         publishDir "${OUTDIR}/Reference/Bloomfilter", mode: 'copy'
 
-	input:
-	file(reference) from inputBloomMaker
+        input:
+        file(reference) from inputBloomMaker
 
-	output:
-	set file(bf),file(txt) into refBloom
-	file(reference)
-	
-	script:
-	base_name = reference.getBaseName()
-	bf = base_name + ".bf"
-	txt = base_name + ".txt"
+        output:
+        set file(bf),file(txt) into refBloom
+        file(reference)
 
-	"""
-		biobloommaker -p $base_name $reference
-	"""
+        script:
+        base_name = reference.getBaseName()
+        bf = base_name + ".bf"
+        txt = base_name + ".txt"
+
+        """
+        	biobloommaker -p $base_name $reference
+        """
 
 }
 
+
+// *****************************
+// Filter reads against the human genome
+// *****************************
+
 if (params.filter) {
 
+	// ****************
+	// Using Bowtie2
+	// ****************
+
+	process mapHost {
+
+		label 'std'
+
+		publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
+		
+		input:
+		set val(id),file(left_reads),file(right_reads) from inputBowtieFilter
+	        path(bwt_files) from host_genome.collect()
+
+		output:
+		set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades )
+		
+		script:
+		left_clean = id + ".clean.R1.fastq.gz"
+        	right_clean = id + ".clean.R2.fastq.gz"
+        	unpaired_clean = id + ".clean.unpaired.fastq.gz"
+        	bowtie_log = id + ".txt"
+
+        	"""
+                	bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean  --un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
+        	"""
+
+	}
+
+
+} else if (params.fast_filter) {
+
 	// **********************
-	// Filter reads against a host contamination (e.g. human) - only reads not matching the host will survive
+	// Using Bloom filter
 	// **********************
+
 	process BloomfilterHost {
 
         	label 'std'
@@ -232,13 +276,13 @@ if (params.filter) {
 
 		label 'std'
 
-	        publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
+	        publishDir "${OUTDIR}/${id}//CleanReads", mode: 'copy'
 
         	input:
 	        set val(id),file(reads) from inputReformat
 
         	output:
-	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken )
+	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades )
 
         	script:
 	        left = id + "_R1_001.bloom_non_host.fastq.gz"
@@ -251,7 +295,7 @@ if (params.filter) {
 	}
 
 } else {
-	inputBioBloomHost.into { inputKraken; inputPathoscopeMap }
+	inputBioBloomHost.into { inputKraken; inputPathoscopeMap; inputSpades  }
 }
 
 // ************************
@@ -325,14 +369,14 @@ process Kraken2Yaml {
 	
 	report_yaml = "kraken_report_mqc.yaml"
 	"""
-		kraken2yaml.pl --outfile $report_yaml
+		kraken_covid2yaml.pl --outfile $report_yaml
 	"""
 
 }
 
 process runSpades {
 
-	//label 'spades'
+	label 'std'
 
 	publishDir "${OUTDIR}/${id}/Assembly/Spades", mode: 'copy'
 
@@ -354,7 +398,7 @@ process runSpades {
 	}
 
 	"""
-		spades.py --rnavirus -1 $left -2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+		coronaspades.py -1 $left -2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
 	"""
 }
 
@@ -362,7 +406,50 @@ process runSpades {
 // Run assembly QC with QUAST
 // **************************
 
-contigsSpades.into {assemblies; assemblies_qc }
+contigsSpades.into {assemblies; assemblies_qc; assemblies_pangolin }
+
+process runPangolin {
+
+	label 'pangolin'
+
+	publishDir "${OUTDIR}/${id}/Pangolin", mode: 'copy'
+
+	input:
+	set val(id),path(assembly) from assemblies_pangolin
+
+	output:
+	set val(id),path(report) into pangolin_report
+
+	script:
+
+	report = id + ".pangolin.csv"
+
+	"""
+		pangolin --outfile $report $assembly 
+	"""
+}
+
+process Pangolin2Yaml {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/Pangolin", mode: 'copy'
+
+	input:
+	file(reports) from pangolin_report.collect()
+
+	output:
+	file(report) into PangolinYaml
+
+	script:
+
+	report = "pangolin_report_mqc.yaml"
+
+	"""
+		pangolin2yaml.pl > $report
+	"""
+
+}
 
 process runQuast {
 
@@ -516,7 +603,7 @@ process runBamToBed {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam_md),file(bai_md) from HostBam.filter { b -> b.size() > 80000 }
+	set val(id),file(bam_md),file(bai_md) from HostBam.filter { b -> b.size() > 8000 }
 
 	output:
 	file(bed) 
@@ -643,6 +730,7 @@ process runMultiQC {
 	file('*') from KrakenYaml.ifEmpty('')
 	file('*') from BamAlignStats.collect()
 	file('*') from QuastReport.collect().ifEmpty('')
+	file('*') from PangolinYaml.ifEmpty('')
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
