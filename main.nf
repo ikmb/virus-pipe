@@ -149,7 +149,7 @@ process runFastp {
 
 	scratch true
 
-        publishDir "${OUTDIR}/${id}/RawReads", mode: 'copy'
+        publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
 
 
         input:
@@ -704,7 +704,7 @@ process runFilterVcf {
 	set val(id),file(vcf) from fbVcf
 
 	output:
-	file(vcf_filtered) into finalVcf
+	set val(id),file(vcf_filtered) into finalVcf
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -712,6 +712,27 @@ process runFilterVcf {
 	"""
 		bcftools filter ${params.filter_options} $vcf > $vcf_filtered
 	"""
+}
+
+process VcfStats {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+	input:
+	set val(id),file(vcf) from finalVcf
+
+	output:
+	file(stats) into VcfStats
+
+	script:
+	stats = vcf.getBaseName() + ".stats"
+
+	"""
+		bcftools stats $vcf > $stats
+	"""
+
 }
 
 // **********************
@@ -731,6 +752,7 @@ process runMultiQC {
 	file('*') from BamAlignStats.collect()
 	file('*') from QuastReport.collect().ifEmpty('')
 	file('*') from PangolinYaml.ifEmpty('')
+	file('*') from VcfStats.collect()
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
