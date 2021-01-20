@@ -210,39 +210,7 @@ process make_bloomfilter {
 // Filter reads against the human genome
 // *****************************
 
-if (params.filter) {
-
-	// ****************
-	// Using Bowtie2
-	// ****************
-
-	process remove_host_reads_bt {
-
-		label 'std'
-
-		publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
-		
-		input:
-		set val(id),file(left_reads),file(right_reads) from inputBowtieFilter
-	        path(bwt_files) from host_genome.collect()
-
-		output:
-		set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades )
-		
-		script:
-		left_clean = id + ".clean.R1.fastq.gz"
-        	right_clean = id + ".clean.R2.fastq.gz"
-        	unpaired_clean = id + ".clean.unpaired.fastq.gz"
-        	bowtie_log = id + ".txt"
-
-        	"""
-                	bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean  --un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
-        	"""
-
-	}
-
-
-} else if (params.fast_filter) {
+if (params.fast_filter) {
 
 	// **********************
 	// Using Bloom filter
@@ -296,6 +264,38 @@ if (params.filter) {
         	"""
 
 	}
+
+} else if (params.filter) {
+
+        // ****************
+        // Using Bowtie2
+        // ****************
+
+        process remove_host_reads_bt {
+
+                label 'std'
+
+                publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
+
+                input:
+                set val(id),file(left_reads),file(right_reads) from inputBowtieFilter
+                path(bwt_files) from host_genome.collect()
+
+                output:
+                set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades )
+
+                script:
+                left_clean = id + ".clean.R1.fastq.gz"
+                right_clean = id + ".clean.R2.fastq.gz"
+                unpaired_clean = id + ".clean.unpaired.fastq.gz"
+                bowtie_log = id + ".txt"
+
+                """
+                        bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean  --un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
+                """
+
+        }
+
 
 } else {
 	inputBioBloomHost.into { inputKraken; inputPathoscopeMap; inputSpades  }
