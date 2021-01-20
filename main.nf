@@ -69,6 +69,10 @@ if (params.guided && !params.assemble) {
 	params.assemble = true
 }
 
+if (params.filter && params.fast_filter) {
+	log.info "Requested filter and fast_filter - will only use fast_filter..."
+	params.filter = false
+}
 host_genome = Channel.fromPath("${params.host_index}*")
 
 // set basic global options like location of database files
@@ -143,7 +147,7 @@ if (params.reads) {
 // ILLUMINA WORKFLOW
 // **********************
 
-process runFastp {
+process trim_reads {
 
 	label 'fastp'
 
@@ -171,14 +175,13 @@ process runFastp {
         json = fastqR1.getBaseName() + ".fastp.json"
         html = fastqR1.getBaseName() + ".fastp.html"
 
-
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right $options -f $params.clip -t $params.clip --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
         """
 	
 }
 
-process runBloomMakerTarget {
+process make_bloomfilter {
 
 	label 'std'
 
@@ -213,7 +216,7 @@ if (params.filter) {
 	// Using Bowtie2
 	// ****************
 
-	process mapHost {
+	process remove_host_reads_bt {
 
 		label 'std'
 
@@ -245,7 +248,7 @@ if (params.filter) {
 	// Using Bloom filter
 	// **********************
 
-	process BloomfilterHost {
+	process remove_host_reads_bloom {
 
         	label 'std'
 
@@ -272,7 +275,7 @@ if (params.filter) {
 	// *************************
 	// Take the interlaved non-host reads and produce sane PE data 
 	// *************************
-	process runDeinterlave {
+	process deinterleave_reads {
 
 		label 'std'
 
@@ -301,7 +304,7 @@ if (params.filter) {
 // ************************
 // Get all the reads for a target species
 // ************************
-process BloomfilterTarget {
+process select_covid_reads {
 
 	label 'std'
 
@@ -328,7 +331,7 @@ process BloomfilterTarget {
 // *************************
 // Get a list of non-host species in the sample
 // *************************
-process runKraken2 {
+process kraken2_search {
 
 	label 'kraken'
 
@@ -356,7 +359,7 @@ process runKraken2 {
 	"""
 }
 
-process Kraken2Yaml {
+process kraken2yaml {
 
 
 	input:
@@ -368,13 +371,14 @@ process Kraken2Yaml {
 	script:
 	
 	report_yaml = "kraken_report_mqc.yaml"
+
 	"""
 		kraken_covid2yaml.pl --outfile $report_yaml
 	"""
 
 }
 
-process runSpades {
+process assemble_virus {
 
 	label 'std'
 
@@ -408,7 +412,7 @@ process runSpades {
 
 contigsSpades.into {assemblies; assemblies_qc; assemblies_pangolin }
 
-process runPangolin {
+process assembly_pangolin {
 
 	label 'pangolin'
 
@@ -429,7 +433,7 @@ process runPangolin {
 	"""
 }
 
-process Pangolin2Yaml {
+process pangolin2yaml {
 
 	label 'std'
 
@@ -451,7 +455,7 @@ process Pangolin2Yaml {
 
 }
 
-process runQuast {
+process assembly_qc {
 
 	label 'quast'
 
@@ -485,7 +489,7 @@ if (params.pathoscope) {
 	// **********************
 	// Run pathoscope MAP
 	// **********************
-	process runPathoscopeMap {
+	process pathoscope_map {
 
 		label 'pathoscope'
 
@@ -508,7 +512,7 @@ if (params.pathoscope) {
 	// **********************
 	// Run pathoscope ID
 	// **********************
-	process runPathoscopeId {
+	process pathoscope_id {
 
 		label 'pathoscope'
 
@@ -536,7 +540,7 @@ if (params.pathoscope) {
 // **************************
 // align reads against reference genome
 // **************************
-process runBowtie {
+process align_viral_reads {
 
        	label 'std'
 
@@ -562,7 +566,7 @@ process runBowtie {
 // ***********************
 // Mark duplicate reads
 // ***********************
-process runMD {
+process mark_dups {
 
        	label 'std'
 
@@ -596,7 +600,7 @@ process runMD {
 // ************************
 // Coverage statistics
 // ************************
-process runBamToBed {
+process bam2bed {
 
 	label 'bedtools'
 
@@ -618,7 +622,7 @@ process runBamToBed {
 
 }
 
-process runCoverageStats {
+process coverage_stats {
 	
 	label 'std'
 
@@ -637,16 +641,14 @@ process runCoverageStats {
 	report = id + ".coverage.pdf"
 	
 	"""
-
 		mosdepth -t ${task.cpus} $id $bam
 		samtools depth -d 200  $bam > $sam_coverage
 		bam2coverage_plot.R $sam_coverage ${params.cov_lim} $report
-		
 	"""
 	
 }
 
-process runAlignStats {
+process align_stats {
 
         label 'std'
 
@@ -670,7 +672,7 @@ process runAlignStats {
 // ************************
 // Variant calling
 // ************************
-process runFreebayes {
+process call_variants {
 	
        	label 'std'
 
@@ -694,7 +696,7 @@ process runFreebayes {
 // ********************
 // Filter variant calls
 // ********************
-process runFilterVcf {
+process filter_vcf {
 	
        	label 'std'
 
@@ -714,7 +716,7 @@ process runFilterVcf {
 	"""
 }
 
-process VcfStats {
+process vcf_stats {
 
 	label 'std'
 
@@ -738,7 +740,7 @@ process VcfStats {
 // **********************
 // Compile quality metrics into report
 // **********************
-process runMultiQC {
+process MultiQC {
 
 	label 'std'
 
