@@ -22,7 +22,7 @@ For more details on available options, see below.
 ## Available options and settings
 
 ### `--reads` 
-Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Mit be enclosed in single-quotes.
+Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Must be enclosed in single-quotes.
 
 ### `--run_name`
 Provide a usefull name to this analysis run (could be the LIMS project ID)
@@ -36,7 +36,7 @@ Defines which set of PCR primers was used if this is sequenced from amplicons us
 ### `--primer_fasta` (default: false)
 Provide a set of primer sequences in FASTA format (overrides --primer_set option)
 
-### `--assembly` (default: true)
+### `--assemble` (default: true)
 Assemble the reads using Spades. This option is always on by default.
 
 ### `--guided` (default: true)
