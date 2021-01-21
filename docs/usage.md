@@ -22,34 +22,34 @@ For more details on available options, see below.
 ## Available options and settings
 
 ### `--reads` 
-Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz)
+Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Mit be enclosed in single-quotes.
 
 ### `--run_name`
 Provide a usefull name to this analysis run (could be the LIMS project ID)
 
 ### `--clip` (default: 6)
-Remove n bases from both 3' and 5' to account for fragmented amplicon primers that cannot be detected otherwise.
+Remove n bases from both 3' and 5' of each read to account for fragmented amplicon primers that cannot be detected otherwise.
 
 ### `--primer_set` (default: ARTIC-v3)
-Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). 
+Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). This option is likely not useful if the library prep fragments/nicks the adapters.
 
 ### `--primer_fasta` (default: false)
 Provide a set of primer sequences in FASTA format (overrides --primer_set option)
 
 ### `--assembly` (default: true)
-Assemble the reads using Spades. 
+Assemble the reads using Spades. This option is always on by default.
 
 ### `--guided` (default: true)
-Use the built-in Covid19 reference to guide assembly (this will likely inflate assembly metrics)
+Use the built-in Covid19 reference to guide assembly (this will likely inflate assembly metrics). This option is always on by default. 
 
 ### `--taxonomy` (default: false)
 Run the Pathoscope pipeline to check for other metagenomic signals in the data.
 
 ### `--filter` (default: true)
-If this option is set, the trimmed reads will be run against a bloom filter to remove likely human reads prior to taxnomic assignment.
+If this option is set, the trimmed reads will be mapped and filtered against the human genome using Bowtie2 prior to taxonomic assignment.
 
 ### `--fast_filter` (default: false)
-Use a rapid bloom filter to remove host reads. This is significantly faster than an exhaustive alignment (--filter), but is less testedt. Use only when processing high sample numbers and/or very deep samples. 
+Use a rapid bloom filter to remove host reads. This is significantly faster than an exhaustive alignment (--filter), but is less tested. Use only when processing high sample numbers and/or very deep samples. 
 
 ## Expert options (safe to ignore!)
 
