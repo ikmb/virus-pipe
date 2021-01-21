@@ -26,3 +26,4 @@ RUN cd /opt && \
 	tar -xvf SPAdes-3.15.0-Linux.tar.gz && rm *.tar.gz && \
 	mv SPAdes-3.15.0-Linux 3.15.0
 	
+RUN /opt/conda/envs/virus-pipe-1.0/bin/snpEff download NC_045512.2

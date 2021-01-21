@@ -39,9 +39,9 @@ if (params.help){
 
 def summary = [:]
 
-REF = file("${baseDir}/assets/reference/MN908947.3.fasta")
-REF_GFF = file("${baseDir}/assets/reference/MN908947.3.gff")
-REF_NAME = "MN908947.3"
+REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
+REF_GFF = file("${baseDir}/assets/reference/NC_045512.2.gff")
+REF_NAME = "NC_045512.2"
 
 REF_WITH_HOST = file(params.ref_with_host)
 
@@ -706,7 +706,7 @@ process filter_vcf {
 	set val(id),file(vcf) from fbVcf
 
 	output:
-	set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report)
+	set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -734,6 +734,28 @@ process vcf_stats {
 
 	"""
 		bcftools stats $vcf > $stats
+	"""
+
+}
+
+process effect_prediction {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+	input:
+	set val(id),file(vcf) from VcfPredict
+
+	output:
+	set val(id),file(effects) into EffectPrediction
+
+	script:
+
+	effects = id + ".snpeff." . REF_NAME . ".txt"
+
+	"""
+		snpEff -v $REF_NAME $vcf > $effects
 	"""
 
 }
