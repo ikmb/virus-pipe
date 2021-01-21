@@ -17,4 +17,4 @@ dependencies:
   - mosdepth=0.2.9
   - r-base
   - r-tidyverse
-
+  - perl-pdf-api2

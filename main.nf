@@ -155,7 +155,6 @@ process trim_reads {
 
         publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
 
-
         input:
         set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
@@ -344,7 +343,7 @@ process kraken2_search {
 	set val(id),file(left),file(right) from inputKraken
 
 	output:
-	set val(id),file(report) into KrakenReport
+	set val(id),file(report) into (KrakenReport, Kraken2Report)
 	file(kraken_log)
 
 	script:
@@ -422,7 +421,7 @@ process assembly_pangolin {
 	set val(id),path(assembly) from assemblies_pangolin
 
 	output:
-	set val(id),path(report) into pangolin_report
+	set val(id),path(report) into (pangolin_report, Pangolin2Report)
 
 	script:
 
@@ -466,6 +465,7 @@ process assembly_qc {
 
 	output:
 	path(quast_dir) into QuastReport
+	set val(id),file("${quast_dir}/report.tsv") into Quast2Report
 	file("quast_results")
 
 	script:
@@ -483,7 +483,6 @@ process assembly_qc {
 }
 /*
 */
-
 
 if (params.pathoscope) {
 	// **********************
@@ -659,6 +658,7 @@ process align_stats {
 
 	output:
 	file(align_stats) into BamAlignStats
+	set val(sampleID),file(align_stats) into Samtools2Report
 
 	script:
 	align_stats = sampleID + ".txt"
@@ -706,7 +706,7 @@ process filter_vcf {
 	set val(id),file(vcf) from fbVcf
 
 	output:
-	set val(id),file(vcf_filtered) into finalVcf
+	set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report)
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -727,12 +727,42 @@ process vcf_stats {
 
 	output:
 	file(stats) into VcfStats
+	set val(id),file(stats) into VcfReport
 
 	script:
 	stats = vcf.getBaseName() + ".stats"
 
 	"""
 		bcftools stats $vcf > $stats
+	"""
+
+}
+
+// **********************
+// Write a per-patient report
+// **********************
+
+GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(Vcf2Report)
+
+
+process final_report {
+
+	label 'std'
+
+	publishDir "${OUTDIR}/${id}/Report", mode: 'copy'
+
+	input:
+	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants) from GroupedReports
+
+	output:
+	file(patient_report) 
+
+	script:
+
+	patient_report = id + "_report.pdf"
+
+	"""
+		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report
 	"""
 
 }
