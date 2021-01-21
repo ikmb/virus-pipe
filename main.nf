@@ -762,6 +762,7 @@ process final_report {
 	patient_report = id + "_report.pdf"
 
 	"""
+		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
 		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report
 	"""
 

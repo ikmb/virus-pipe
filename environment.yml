@@ -18,3 +18,5 @@ dependencies:
   - r-base
   - r-tidyverse
   - perl-pdf-api2
+  - perl-pdf-table
+  - snpeff=5.0.0

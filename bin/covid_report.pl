@@ -2,8 +2,7 @@
 
 use strict;
 use Getopt::Long;
-use PDF::Create;
-use PDF::Create::Page;
+use PDF::API2;
 
 my $usage = qq{
 perl my_script.pl
@@ -183,67 +182,130 @@ close($IN);
 
 my $report_name = $outfile;
 
-my $pdf = PDF::Create->new(
-    'filename'     => $report_name,
-    'Author'       => 'IKMB Diagnostik',
-    'Title'        => 'SARS-Cov2 Sequenzierung',
-    'CreationDate' => [ localtime ]
+my $pdf = PDF::API2->new();
+ 
+$pdf->info(
+	'Author' => "IKMB Bioinformatics platform",
+	'CreationDate' => localtime,
+	'Title' => 'Sars2-CoV2 Report',
 );
- 
-# Add a A4 sized page
-my $root = $pdf->new_page('MediaBox' => $pdf->get_page_size('A4'));
- 
-# Add a page which inherits its attributes from $root
-my $page1 = $root->new_page;
- 
-# Prepare a font
-my $font = $pdf->font('BaseFont' => 'Helvetica');
 
-my $logo = $pdf->image("ikmb_bfx_logo.jpg");
+# Add a page 
+my $page = $pdf->page();
+$page->mediabox('A4');
 
-$page1->image(
-    'image'  => $logo,
-    'xscale' => 0.8,
-    'yscale' => 0.8,
-    'xpos'   => 50,
-    'ypos'   => 750
-);
- 
+ # Prepare a font
+my $font = $pdf->corefont('Helvetica');
+my $b_font = $pdf->corefont('Helvetica-Bold');
+
+my $gfx = $page->gfx();
+
+my $image = $pdf->image_jpeg("ikmb_bfx_logo.jpg");
+
+$gfx->image($image,50,730,$image->width,$image->height);
+
+my $text = $page->text();
+$text->font($font,10);
+
 # Write some text
-$page1->line(50, 740,   550, 740);
-$page1->stringl($font, 14, 50, 720, 'SARS-Cov2 Sequenzierung');
-$page1->stringl($font, 10, 50, 700, 'Analyse zur Identifikation und Typisierung von SARS-Cov2 Viren mittels Genomsequenzierung');
-$page1->line(50, 680,   550, 680);
 
-$page1->stringl($font, 12, 50, 660, "Patient/Library:");
-$page1->stringl($font, 12, 250, 660, "$patient");
+my $step = 700;
 
-$page1->stringl($font, 12, 50, 640, "COVID19 Status:");
-$page1->stringl($font, 12, 250, 640, "$status");
+$text->translate(50,$step);
+$text->font($b_font,14);
+$text->text("Sars-CoV2 Sequenzierung");
 
+$step -= 20;
+$text->font($font,10);
+$text->translate(50,$step);
+$text->text("Analyse zur Identifikation und Typisierung von SARS-Cov2 Viren mittels Genomsequenzierung");
 
-$page1->stringl($font, 12, 50, 620, "Typ/Lineage:"); 
-$page1->stringl($font, 12, 250, 620, "${global_lineage} (Pangolin)");
+$step -= 30;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("Patient/Library:");
 
-$page1->stringl($font, 10, 50, 600, 'Pangolin typisiert SARS-Cov2 Genomdaten basierend auf vorab definierten genomischen Varianten');
-$page1->stringl($font, 10, 50, 585, 'https://github.com/cov-lineages/pangolin');
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($patient);
 
-$page1->stringl($font, 12, 50, 545, 'Metriken');
-$page1->stringl($font, 10, 50, 525, 'Reads sequenziert und gemapped:');
-$page1->stringl($font, 10, 250, 525, "$mapped_reads");
+$step -= 20;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("COVID19 Status:");
 
-$page1->stringl($font, 10, 50, 505, 'Genomabdeckung (Assembly):');
-$page1->stringl($font, 10, 250, 505, $genome_fraction);
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($status);
 
-$page1->stringl($font, 12, 50, 480, 'Beobachtete Varianten');
+$step -= 20;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("Typ/Lineage:");
 
-my $pos = 480;
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text("${global_lineage} (Pangolin)");
+
+$step -= 20;
+$text->font($font,8);
+$text->translate(50,$step);
+$text->text("Pangolin typisiert SARS-Cov2 Genomdaten basierend auf vorab definierten genomischen Varianten");
+
+$step -= 10;
+$text->translate(50,$step);
+$text->text("https://github.com/cov-lineages/pangolin");
+
+$step -= 40;
+$text->font($b_font,12);
+$text->translate(50,$step);
+$text->text("Metriken");
+
+$text->font($b_font,10);
+$step -= 20;
+$text->translate(50,$step);
+$text->text("Reads sequenziert und gemapped:");
+
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($mapped_reads);
+
+$step -= 20;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("Assembly komplett:");
+
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($genome_fraction . "%");
+
+$step -= 80;
+$text->font($b_font,12);
+$text->translate(50,$step);
+$text->text("Beobachtete Varianten");
+
+$text->font($font,8);
+
 foreach my $r (@records) {
-	printf $r . "\n";
-	$pos -= 15 ;
-	$page1->stringl($font, 10, 50, $pos, $r);
+	$step -= 15 ;
+
+	$text->translate(50,$step);
+	$text->text($r);
 
 }
 
-$pdf->close;
+## Footer ##
+
+$text->font($font,8);
+
+$text->translate(50,70);
+$text->text("Dieser Report wurde erstellt mit der IKMB Virus-pipe Pipeline - version 1.0. Weitere Details unter: https://github.com/ikmb/virus-pipe");
+
+$text->translate(50,50);
+
+my $date = localtime;
+
+$text->text("Report erstellt: $date");
+
+$pdf->saveas($report_name);
 
