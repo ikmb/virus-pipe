@@ -162,7 +162,7 @@ my @records;
 my @fields;
 
 my @table = (
-	[ "Position","Effekt","Gen-ID","HGVS_p" ]
+	[ "Position","Effekt","Feature_ID","HGVS_c" ]
 );
 
 while (<$IN>) {
@@ -205,8 +205,8 @@ while (<$IN>) {
 	}
 
 	my $effect = $annot{"Annotation_Impact"} ;
-	my $gene_id = $annot{"Gene_ID"} ;
-	my $hgvs_p = $annot{"HGVS.p"} ;
+	my $gene_id = $annot{"Feature_ID"} ;
+	my $hgvs_p = $annot{"HGVS.c"} ;
 
 	my @te = [ @elements[1] . ":" . @elements[3] . ">" . @elements[4] , 
 		$effect ,
