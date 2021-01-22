@@ -204,7 +204,6 @@ process make_bloomfilter {
 
 }
 
-
 // *****************************
 // Filter reads against the human genome
 // *****************************
@@ -632,12 +631,15 @@ process coverage_stats {
 
 	output:
 	file(global_dist) into BamStats
+	set val(id),file(sam_coverage) into BamCoverage
 	file(report)
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
-	report = id + ".coverage.pdf"
+	report = id + ".coverage"
+	report_pdf = report + "+.pdf"
+	report_jpg = report + ".jpg"
 	
 	"""
 		mosdepth -t ${task.cpus} $id $bam
@@ -688,7 +690,7 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+		freebayes --genotype-qualities -q 20 -m 60 --min-coverage 10 -V --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
 	"""
 
 }
@@ -752,7 +754,7 @@ process effect_prediction {
 
 	script:
 
-	effects = id + ".snpeff." . REF_NAME . ".txt"
+	effects = id + ".snpeff." + REF_NAME + ".vcf"
 
 	"""
 		snpEff -v $REF_NAME $vcf > $effects
@@ -764,7 +766,7 @@ process effect_prediction {
 // Write a per-patient report
 // **********************
 
-GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(Vcf2Report)
+GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction)
 
 
 process final_report {

@@ -3,6 +3,7 @@
 use strict;
 use Getopt::Long;
 use PDF::API2;
+use PDF::Table;
 
 my $usage = qq{
 perl my_script.pl
@@ -150,7 +151,7 @@ while (<$IN>) {
 close($IN);
 
 #########################
-## PARSE VCF FILE
+## PARSE SnpEff VCF FILE
 #########################
 
 open (my $IN, '<', $vcf) or die "FATAL: Can't open file: $vcf for reading.\n$!\n";
@@ -158,19 +159,63 @@ open (my $IN, '<', $vcf) or die "FATAL: Can't open file: $vcf for reading.\n$!\n
 # MN908947.3      21      .       CAGGTAACAA      GACGGCCAGT      5925.49 
 
 my @records;
+my @fields;
+
+my @table = (
+	[ "Position","Effekt","Gen-ID","HGVS_p" ]
+);
 
 while (<$IN>) {
 
         chomp;
         my $line = $_;
+	if ($line =~ /.<ID=ANN.*/) {
+		my $field_string = (split "=",$line)[-1];
+		$field_string =~  s/Functional annotations\: //g ;
+		$field_string =~ s/[',"]//g ;
+		my @temp_fields = split(/\|/, $field_string);
+		foreach my $f (@temp_fields) {
+			chomp($f);
+			$f =~ tr/ //ds;
+			push(@fields,$f);
+		}
+	}
 
 	next if ($line =~ /^#.*/);
 
 	my @elements = split(/\t/, $line);
+	my $info_field =  @elements[7] ;
+	my @info = split(";", $info_field);	
 
-	my $record = @elements[1] . ":" . @elements[3] . ">" . @elements[4] ;
+	my %data;
+	foreach my $i (@info) {
 
-	push(@records,$record);
+		my ($key,$values) = split("=",$i);
+
+		$data{$key} = $values ;
+	}
+
+	my @annotations = (split /\|/ ,  $data{"ANN"});
+
+	my %annot;
+
+	foreach my $f (@fields) {
+		my $a = shift @annotations;
+		$annot{$f} = $a ;
+	}
+
+	my $effect = $annot{"Annotation_Impact"} ;
+	my $gene_id = $annot{"Gene_ID"} ;
+	my $hgvs_p = $annot{"HGVS.p"} ;
+
+	my @te = [ @elements[1] . ":" . @elements[3] . ">" . @elements[4] , 
+		$effect ,
+		$gene_id , 
+		$hgvs_p
+	] ;
+
+	push(@table, @te);
+
 }
 
 close($IN);
@@ -286,13 +331,37 @@ $text->text("Beobachtete Varianten");
 
 $text->font($font,8);
 
-foreach my $r (@records) {
-	$step -= 15 ;
+# Variant table
 
-	$text->translate(50,$step);
-	$text->text($r);
+$step -= 20;
+$text->translate(50,$step);
+$text->text("Sars-CoV2 reference: NC_045512.2.");
 
-}
+my $pdftable = new PDF::Table;
+
+my $table_ref = \@table;
+
+my $left_edge_of_table = 50;
+
+$step -= 20;
+
+$pdftable->table(
+     $pdf,
+     $page,
+     $table_ref,
+     'x' => $left_edge_of_table,
+     'w' => 500,
+     'y' => $step,
+     'h' => 300,
+     'next_y'          => 750,
+     'next_h'          => 500,
+     'padding'         => 2,
+     'padding_right'   => 2,
+     'font_size'       => 8,
+     'bg_color_odd'    => "gray",
+     'bg_color_even'   => "lightgray", 
+     'max_word_length' => 50, # 50 between forced splits
+);
 
 ## Footer ##
 
