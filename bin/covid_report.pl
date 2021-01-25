@@ -4,6 +4,7 @@ use strict;
 use Getopt::Long;
 use PDF::API2;
 use PDF::Table;
+#use JSON;
 
 my $usage = qq{
 perl my_script.pl
@@ -46,6 +47,10 @@ if ($help) {
 
 my $patient = (split /\./, $kraken)[0];
 
+my %data; # hold information for JSON reporting
+
+$data{"Sample"}= {"library" => $patient} ;
+
 ########################
 ## PARSE PANGOLIN REPORT
 ########################
@@ -73,6 +78,8 @@ foreach my $line (@lines) {
 }
 
 close($IN);
+
+$data{"Pangolin"}= {"lineage" => $global_lineage} ;
 
 ######################
 ## PARSE KRAKEN REPORT
@@ -103,6 +110,8 @@ while (<$IN>) {
 
 close($IN);
 
+$data{"Sars-CoV2"}= {"Status" => $status} ;
+
 ########################
 ## PARSE SAMTOOLS REPORT
 ########################
@@ -124,6 +133,8 @@ while (<$IN>) {
 }
 
 close($IN);
+
+$data{"reads"}= {"mapped" => $mapped_reads } ;
 
 #########################
 ## PARSE ASSEMBLY STATS
@@ -150,6 +161,8 @@ while (<$IN>) {
 }
 close($IN);
 
+$data{"Assembly"}= {"Komplett" => $genome_fraction} ;
+
 #########################
 ## PARSE SnpEff VCF FILE
 #########################
@@ -157,6 +170,9 @@ close($IN);
 open (my $IN, '<', $vcf) or die "FATAL: Can't open file: $vcf for reading.\n$!\n";
 
 # MN908947.3      21      .       CAGGTAACAA      GACGGCCAGT      5925.49 
+
+# Array of hashes to old effect predictions for each position
+my @variant_data;
 
 my @records;
 my @fields;
@@ -220,9 +236,33 @@ while (<$IN>) {
 
 	push(@table, @te);
 
+	my %entry = (
+		"genomic_position" => @elements[1],
+		"ref_base" => @elements[3],
+		"alt_base" => @elements[4],
+		"annotation" => $a,
+		"effect" => $effect,
+		"gene_name" => $gene_name,
+		"transcript_id" => $gene_id,
+		"hgvs_c" => $hgvs_p
+	);
+	
+	push(@variant_data,\%entry);		
+
 }
 
+data{"Variants"} = \@variant_data;
+
 close($IN);
+
+
+##################
+## Build JSON
+##################
+
+#my $json = encode_json \%data;
+
+#print $json . "\n";
 
 
 ##################
