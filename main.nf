@@ -49,8 +49,6 @@ REF_WITH_HOST = file(params.ref_with_host)
 Primer sequences
 */
 
-pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
-
 // Selection of amplicon primers
 if (params.primer_fasta) {
 	primers = Channel.fromPath(file(params.primer_fasta))
@@ -765,7 +763,6 @@ process effect_prediction {
 
 GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction)
 
-
 process final_report {
 
 	label 'std'
@@ -871,6 +868,7 @@ workflow.onComplete {
   def engine = new groovy.text.GStringTemplateEngine()
 
   def tf = new File("$baseDir/assets/email_template.txt")
+  print tf
   def txt_template = engine.createTemplate(tf).make(email_fields)
   def email_txt = txt_template.toString()
 

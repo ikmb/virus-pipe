@@ -251,7 +251,7 @@ while (<$IN>) {
 
 }
 
-data{"Variants"} = \@variant_data;
+$data{"Variants"} = \@variant_data;
 
 close($IN);
 
