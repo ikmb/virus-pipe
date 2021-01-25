@@ -49,6 +49,8 @@ REF_WITH_HOST = file(params.ref_with_host)
 Primer sequences
 */
 
+pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
+
 // Selection of amplicon primers
 if (params.primer_fasta) {
 	primers = Channel.fromPath(file(params.primer_fasta))
@@ -132,7 +134,7 @@ log.info "======================================================================
 // ********************
 
 Channel.fromPath(REF)
-	.set { inputBloomMaker }
+	.into { inputBloomMaker; inputNormalize  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -478,6 +480,8 @@ process assembly_qc {
 		
 	"""
 }
+/*
+*/
 
 if (params.pathoscope) {
 	// **********************
@@ -632,7 +636,6 @@ process coverage_stats {
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
-	summary = id + ".mosdepth.summary.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
 	report = id + ".coverage.pdf"
 	
@@ -697,13 +700,13 @@ process filter_vcf {
 	
        	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
 	set val(id),file(vcf) from fbVcf
 
 	output:
-	set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+	set val(id),file(vcf_filtered) into VcfNormalize
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -711,6 +714,27 @@ process filter_vcf {
 	"""
 		bcftools filter ${params.filter_options} $vcf > $vcf_filtered
 	"""
+}
+
+process normalize_vcf {
+
+	label 'vt'
+
+	input:
+	set val(id),file(vcf) from VcfNormalize
+        file(ref_genome) from inputNormalize.collect()
+
+	output:
+        set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+
+	script:
+
+	vcf_filtered = vcf.getBaseName() + ".normalized.vcf"
+
+	"""
+		vt normalize -o $vcf_filtered -r $ref_genome $vcf
+	"""
+
 }
 
 process vcf_stats {
@@ -762,6 +786,7 @@ process effect_prediction {
 // **********************
 
 GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction)
+
 
 process final_report {
 
@@ -868,7 +893,6 @@ workflow.onComplete {
   def engine = new groovy.text.GStringTemplateEngine()
 
   def tf = new File("$baseDir/assets/email_template.txt")
-  print tf
   def txt_template = engine.createTemplate(tf).make(email_fields)
   def email_txt = txt_template.toString()
 
