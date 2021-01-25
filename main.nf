@@ -480,8 +480,6 @@ process assembly_qc {
 		
 	"""
 }
-/*
-*/
 
 if (params.pathoscope) {
 	// **********************
@@ -636,6 +634,7 @@ process coverage_stats {
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
+	summary = id + ".mosdepth.summary.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
 	report = id + ".coverage.pdf"
 	
