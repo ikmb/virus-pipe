@@ -718,7 +718,7 @@ process filter_vcf {
 
 process normalize_vcf {
 
-	label 'vt'
+	label 'std'
 
 	input:
 	set val(id),file(vcf) from VcfNormalize
@@ -922,7 +922,6 @@ workflow.onComplete {
         def sf = new File("$baseDir/assets/sendmail_template.txt")
         def sendmail_template = engine.createTemplate(sf).make(smail_fields)
         def sendmail_html = sendmail_template.toString()
-
 
         try {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
