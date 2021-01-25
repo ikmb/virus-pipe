@@ -637,9 +637,7 @@ process coverage_stats {
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
-	report = id + ".coverage"
-	report_pdf = report + "+.pdf"
-	report_jpg = report + ".jpg"
+	report = id + ".coverage.pdf"
 	
 	"""
 		mosdepth -t ${task.cpus} $id $bam
@@ -690,7 +688,7 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes --genotype-qualities -q 20 -m 60 --min-coverage 10 -V --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
 	"""
 
 }
@@ -757,7 +755,7 @@ process effect_prediction {
 	effects = id + ".snpeff." + REF_NAME + ".vcf"
 
 	"""
-		snpEff -v $REF_NAME $vcf > $effects
+		snpEff -v $REF_NAME -onlyProtein -no-upstream -no-downstream -canon $vcf > $effects
 	"""
 
 }

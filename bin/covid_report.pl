@@ -162,7 +162,7 @@ my @records;
 my @fields;
 
 my @table = (
-	[ "Position","Effekt","Feature_ID","HGVS_c" ]
+	[ "Position","Annotation","Effekt","Gen Name","Transkript","HGVS_c" ]
 );
 
 while (<$IN>) {
@@ -205,12 +205,16 @@ while (<$IN>) {
 	}
 
 	my $effect = $annot{"Annotation_Impact"} ;
+	my $gene_name = $annot{'Gene_Name'};
 	my $gene_id = $annot{"Feature_ID"} ;
 	my $hgvs_p = $annot{"HGVS.c"} ;
+	my $a = $annot{'Annotation'};
 
 	my @te = [ @elements[1] . ":" . @elements[3] . ">" . @elements[4] , 
+		$a,
 		$effect ,
-		$gene_id , 
+		$gene_name,
+		$gene_id ,
 		$hgvs_p
 	] ;
 
@@ -351,15 +355,15 @@ $pdftable->table(
      $table_ref,
      'x' => $left_edge_of_table,
      'w' => 500,
-     'y' => $step,
-     'h' => 300,
+     'start_y' => $step,
+     'start_h' => 300,
      'next_y'          => 750,
      'next_h'          => 500,
-     'padding'         => 2,
-     'padding_right'   => 2,
-     'font_size'       => 8,
-     'bg_color_odd'    => "gray",
-     'bg_color_even'   => "lightgray", 
+     'padding'         => 1,
+     'padding_right'   => 1,
+     'font_size'       => 7,
+     'background_color_odd'    => "white",
+     'background_color_even'   => "lightgray", 
      'max_word_length' => 50, # 50 between forced splits
 );
 

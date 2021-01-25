@@ -3,6 +3,7 @@ LABEL authors="Marc Hoeppner" \
       description="Docker image containing all requirements for IKMB Virus pipeline"
 
 COPY environment.yml /
+COPY assets/references/NC
 RUN conda env create -f /environment.yml && conda clean -a
 ENV PATH /opt/conda/envs/virus-pipe-1.0/bin:/opt/biobloom/bin:/opt/spades/3.15.0/bin:$PATH
 
@@ -27,4 +28,5 @@ RUN cd /opt && \
 	mv SPAdes-3.15.0-Linux 3.15.0
 	
 RUN /opt/conda/envs/virus-pipe-1.0/bin/snpEff download NC_045512.2
+
 
