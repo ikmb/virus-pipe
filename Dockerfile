@@ -5,7 +5,7 @@ LABEL authors="Marc Hoeppner" \
 COPY environment.yml /
 
 RUN conda env create -f /environment.yml && conda clean -a
-ENV PATH /opt/conda/envs/virus-pipe-1.0/bin:/opt/biobloom/bin:/opt/spades/3.15.0/bin:$PATH
+ENV PATH /opt/conda/envs/virus-pipe-1.0/bin:/opt/biobloom/bin:/opt/spades/3.15.0/bin:/opt/vt:$PATH
 
 RUN apt-get update && apt-get -y install procps make gcc  git build-essential autotools-dev automake libsparsehash-dev libboost-all-dev \
 cmake zlib1g-dev coreutils
@@ -29,4 +29,5 @@ RUN cd /opt && \
 	
 RUN /opt/conda/envs/virus-pipe-1.0/bin/snpEff download NC_045512.2
 
-
+RUN cd /opt && git clone https://github.com/atks/vt.git && cd vt \
+	&& git checkout 0.577 && make

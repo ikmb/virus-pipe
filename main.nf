@@ -121,7 +121,7 @@ if (params.primers) {
 } else {
 	log.info "No designated primers for trimming - only Illumina primers used"
 }
-log.info "Read clipping 3'/5'		${params.clip}"
+log.info "Read clipping 3'/5'		${params.clip}bp"
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:		${workflow.containerEngine}"
