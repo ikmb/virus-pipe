@@ -50,6 +50,7 @@ my $patient = (split /\./, $kraken)[0];
 my %data; # hold information for JSON reporting
 
 $data{"Sample"}= {"library" => $patient} ;
+$data{"Reference"} = "NC_045512.2.";
 
 ########################
 ## PARSE PANGOLIN REPORT
@@ -381,7 +382,7 @@ $text->font($font,8);
 
 $step -= 20;
 $text->translate(50,$step);
-$text->text("Sars-CoV2 reference: NC_045512.2.");
+$text->text("Sars-CoV2 Referenz: NC_045512.2");
 
 my $pdftable = new PDF::Table;
 

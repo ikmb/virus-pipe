@@ -676,7 +676,7 @@ process call_variants {
 	
        	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 	input:
 	set val(id),file(bam),file(bai) from bamMD
 
@@ -794,7 +794,7 @@ process final_report {
 
 	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Report", mode: 'copy'
+	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
 	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants) from GroupedReports
