@@ -4,7 +4,7 @@ use strict;
 use Getopt::Long;
 use PDF::API2;
 use PDF::Table;
-#use JSON;
+use JSON;
 
 my $usage = qq{
 perl my_script.pl
@@ -260,9 +260,9 @@ close($IN);
 ## Build JSON
 ##################
 
-#my $json = encode_json \%data;
+my $json = encode_json \%data;
 
-#print $json . "\n";
+print $json . "\n";
 
 
 ##################
