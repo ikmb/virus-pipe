@@ -178,7 +178,7 @@ my @records;
 my @fields;
 
 my @table = (
-	[ "Position","Annotation","Effekt","Gen Name","Transkript","HGVS_c" ]
+	[ "Position","Annotation","Effekt","Gen Name","Transkript","HGVS_p" ]
 );
 
 while (<$IN>) {
@@ -223,7 +223,8 @@ while (<$IN>) {
 	my $effect = $annot{"Annotation_Impact"} ;
 	my $gene_name = $annot{'Gene_Name'};
 	my $gene_id = $annot{"Feature_ID"} ;
-	my $hgvs_p = $annot{"HGVS.c"} ;
+	my $hgvs_p = $annot{"HGVS.p"} ;
+	my $hgvs_c = $annot{"HGVS.c"} ;
 	my $a = $annot{'Annotation'};
 
 	my @te = [ @elements[1] . ":" . @elements[3] . ">" . @elements[4] , 
@@ -244,7 +245,8 @@ while (<$IN>) {
 		"effect" => $effect,
 		"gene_name" => $gene_name,
 		"transcript_id" => $gene_id,
-		"hgvs_c" => $hgvs_p
+		"hgvs_c" => $hgvs_c,
+		"hgvs_p" => $hgvs_p
 	);
 	
 	push(@variant_data,\%entry);		
@@ -321,7 +323,7 @@ $text->text($patient);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("COVID19 Status:");
+$text->text("Sars-CoV2 Status:");
 
 $text->font($font,10);
 $text->translate(250,$step);

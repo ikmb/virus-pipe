@@ -801,14 +801,16 @@ process final_report {
 
 	output:
 	file(patient_report) 
+	file(patient_report_json)
 
 	script:
 
 	patient_report = id + "_report.pdf"
+	patient_report_json = id + "_report.json"
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report
+		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report > $patient_report_json
 	"""
 
 }
