@@ -121,7 +121,7 @@ if (params.primers) {
 } else {
 	log.info "No designated primers for trimming - only Illumina primers used"
 }
-log.info "Read clipping 3'/5'		${params.clip}"
+log.info "Read clipping 3'/5'		${params.clip}bp"
 log.info "Command Line:			$workflow.commandLine"
 if (workflow.containerEngine) {
         log.info "Container engine:		${workflow.containerEngine}"
@@ -134,7 +134,7 @@ log.info "======================================================================
 // ********************
 
 Channel.fromPath(REF)
-	.set { inputBloomMaker }
+	.into { inputBloomMaker; inputNormalize  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -480,6 +480,8 @@ process assembly_qc {
 		
 	"""
 }
+/*
+*/
 
 if (params.pathoscope) {
 	// **********************
@@ -634,7 +636,6 @@ process coverage_stats {
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
-	summary = id + ".mosdepth.summary.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
 	report = id + ".coverage.pdf"
 	
@@ -687,7 +688,7 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF_WITH_HOST --genotype-qualities $bam > $vcf
 	"""
 
 }
@@ -699,13 +700,13 @@ process filter_vcf {
 	
        	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
 	set val(id),file(vcf) from fbVcf
 
 	output:
-	set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+	set val(id),file(vcf_filtered) into VcfNormalize
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -713,6 +714,29 @@ process filter_vcf {
 	"""
 		bcftools filter ${params.filter_options} $vcf > $vcf_filtered
 	"""
+}
+
+process normalize_vcf {
+
+        publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+	label 'std'
+
+	input:
+	set val(id),file(vcf) from VcfNormalize
+        file(ref_genome) from inputNormalize.collect()
+
+	output:
+        set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+
+	script:
+
+	vcf_filtered = vcf.getBaseName() + ".normalized.vcf"
+
+	"""
+		vt normalize -o $vcf_filtered -r $ref_genome $vcf
+	"""
+
 }
 
 process vcf_stats {
@@ -777,14 +801,16 @@ process final_report {
 
 	output:
 	file(patient_report) 
+	file(patient_report_json)
 
 	script:
 
 	patient_report = id + "_report.pdf"
+	patient_report_json = id + "_report.json"
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report
+		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report > $patient_report_json
 	"""
 
 }
@@ -900,7 +926,6 @@ workflow.onComplete {
         def sf = new File("$baseDir/assets/sendmail_template.txt")
         def sendmail_template = engine.createTemplate(sf).make(smail_fields)
         def sendmail_html = sendmail_template.toString()
-
 
         try {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
