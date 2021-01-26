@@ -688,7 +688,7 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF --genotype-qualities $bam > $vcf
+		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF_WITH_HOST --genotype-qualities $bam > $vcf
 	"""
 
 }
@@ -717,6 +717,8 @@ process filter_vcf {
 }
 
 process normalize_vcf {
+
+        publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	label 'std'
 
