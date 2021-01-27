@@ -24,6 +24,7 @@ my $outfile = undef;
 my $pangolin = undef;
 my $kraken = undef;
 my $bam_stats = undef;
+my $software = undef;
 my $assembly_stats = undef;
 my $vcf = undef;
 my $infile = undef;
@@ -33,6 +34,7 @@ GetOptions(
     "help" => \$help,
     "infile=s" => \$infile,
     "kraken=s" => \$kraken,
+    "software=s" => \$software,
     "bam_stats=s" => \$bam_stats,
     "vcf=s" => \$vcf,
     "assembly_stats=s" => \$assembly_stats,
@@ -51,6 +53,27 @@ my %data; # hold information for JSON reporting
 
 $data{"Sample"}= {"library" => $patient} ;
 $data{"Reference"} = "NC_045512.2.";
+
+##########################
+## PARSE SOFTWARE VERSIONS
+##########################
+
+open (my $IN, '<', $software) or die "FATAL: Can't open file: $software for reading.\n$!\n";
+
+my %tools;
+
+while (<$IN>) {
+
+        chomp;
+        my $line = $_;
+	my ($tool,$version) = split(/\t/,$line);
+	$tools{$tool} = $version;
+
+}
+
+close($IN);
+
+$data{"Software"} = { %tools };
 
 ########################
 ## PARSE PANGOLIN REPORT
@@ -333,11 +356,11 @@ $text->text($status);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Typ/Lineage:");
+$text->text("Typ/Lineage (Pangolin):");
 
 $text->font($font,10);
 $text->translate(250,$step);
-$text->text("${global_lineage} (Pangolin)");
+$text->text("${global_lineage}");
 
 $step -= 20;
 $text->font($font,8);
@@ -414,8 +437,26 @@ $pdftable->table(
 
 $text->font($font,8);
 
-$text->translate(50,70);
+$text->translate(50,90);
 $text->text("Dieser Report wurde erstellt mit der IKMB Virus-pipe Pipeline - version 1.0. Weitere Details unter: https://github.com/ikmb/virus-pipe");
+
+$text->translate(50,75);
+$text->text("Software tools:");
+
+$text->translate(50,65);
+
+# Write the software versions
+
+my $audit = "";
+
+foreach my $k (keys %tools) {
+
+	my $version = $tools{$k};	
+	$audit .= "$k:$version "
+
+}
+
+$text->text($audit);
 
 $text->translate(50,50);
 
