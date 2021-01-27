@@ -380,7 +380,7 @@ process assemble_virus {
 
 	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Assembly/Spades", mode: 'copy'
+	publishDir "${OUTDIR}/Assemblies", mode: 'copy'
 
 	when:
 	params.assemble
@@ -389,11 +389,10 @@ process assemble_virus {
 	set val(id),file(left),file(right) from inputSpades
 
 	output:
-	set val(id),file(scaffolds) into contigsSpades
+	set val(id),file(assembly) into contigsSpades
 	
 	script:
-	scaffolds = "spades/scaffolds.fasta"
-
+	assembly = id + ".spades.fasta"
 	def options = ""
 	if (params.guided) {
 		options = "--trusted-contigs ${REF}"
@@ -401,6 +400,8 @@ process assemble_virus {
 
 	"""
 		coronaspades.py -1 $left -2 $right $options -t ${task.cpus} -m ${task.memory.toGiga()} -o spades
+		cp spades/scaffolds.fasta $assembly
+
 	"""
 }
 
@@ -688,7 +689,7 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes --genotype-qualities --min-coverage 10 -V --ploidy 1 -f $REF_WITH_HOST --genotype-qualities $bam > $vcf
+		freebayes ${params.freebayes_options} -f $REF_WITH_HOST $bam > $vcf
 	"""
 
 }
