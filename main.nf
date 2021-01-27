@@ -143,6 +143,38 @@ if (params.reads) {
 	reads_fastp = Channel.empty()
 }
 
+
+process get_software_versions {
+
+    label 'std'
+
+    publishDir "${OUTDIR}/Summary/versions", mode: 'copy'
+
+    output:
+    file("v*.txt")
+    file(yaml_file) into software_versions_yaml
+    file(tab_file) into software_versions_report
+
+    script:
+    yaml_file = "software_versions_mqc.yaml"
+    tab_file = "software_versions.tab"
+
+    """
+	    echo $workflow.manifest.version &> v_ikmb_virus_pipe.txt
+	    echo $workflow.nextflow.version &> v_nextflow.txt
+	    echo "Kraken2 2.0.8_beta" > v_kraken2.txt
+	    echo "Pangolin 2.1.7" > v_pangolin.txt
+	    freebayes --version &> v_freebayes.txt
+	    fastp -v &> v_fastp.txt
+	    samtools --version &> v_samtools.txt
+	    bcftools --version &> v_bcftools.txt
+	    multiqc --version &> v_multiqc.txt
+	    bowtie2 --version &> v_bowtie2.txt
+	    parse_versions.pl >  $yaml_file
+	    parse_versions_tab.pl > $tab_file
+    """
+}
+
 // **********************
 // ILLUMINA WORKFLOW
 // **********************
@@ -799,6 +831,7 @@ process final_report {
 
 	input:
 	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants) from GroupedReports
+	file(version_yaml) from software_versions_report
 
 	output:
 	file(patient_report) 
@@ -811,7 +844,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --kraken $kraken --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report > $patient_report_json
+		covid_report.pl --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report > $patient_report_json
 	"""
 
 }
@@ -834,6 +867,7 @@ process MultiQC {
 	file('*') from QuastReport.collect().ifEmpty('')
 	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
+	file('*') from software_versions_yaml.collect()
 	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
