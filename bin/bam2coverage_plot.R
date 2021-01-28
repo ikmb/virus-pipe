@@ -22,7 +22,7 @@ cov %>%
   geom_area() +
   scale_y_continuous(limits = c(0,200)) +
   scale_x_continuous(limits = c(0,30000)) +
-  theme(text = element_text(size = 12),
+  theme(text = element_text(size = 12,family="sans"),
         panel.grid.major.x = element_blank(),
         panel.background = element_blank(),
         panel.grid.major = element_line(color = "lightgrey"),
