@@ -27,6 +27,7 @@ my $bam_stats = undef;
 my $software = undef;
 my $assembly_stats = undef;
 my $vcf = undef;
+my $plot = undef;
 my $infile = undef;
 my $help;
 
@@ -39,6 +40,7 @@ GetOptions(
     "vcf=s" => \$vcf,
     "assembly_stats=s" => \$assembly_stats,
     "pangolin=s" => \$pangolin,
+    "plot=s" => \$plot,
     "outfile=s" => \$outfile);
 
 # Print Help and exit
@@ -61,13 +63,18 @@ $data{"Reference"} = "NC_045512.2.";
 open (my $IN, '<', $software) or die "FATAL: Can't open file: $software for reading.\n$!\n";
 
 my %tools;
+my $pipeline_version;
 
 while (<$IN>) {
 
         chomp;
         my $line = $_;
 	my ($tool,$version) = split(/\t/,$line);
-	$tools{$tool} = $version;
+	if ($tool =~ /.*Pipeline.*/) {
+		$pipeline_version = $version;
+	} else {
+		$tools{$tool} = $version;
+	}
 
 }
 
@@ -334,6 +341,15 @@ $step -= 20;
 $text->font($font,10);
 $text->translate(50,$step);
 $text->text("Analyse zur Identifikation und Typisierung von SARS-Cov2 Viren mittels Genomsequenzierung");
+$step -= 20;
+
+$text->translate(50,$step);
+$text->font($b_font,10);
+$text->text("Pipeline version:");
+
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($pipeline_version);
 
 $step -= 30;
 $text->font($b_font,10);
@@ -394,7 +410,20 @@ $text->font($font,10);
 $text->translate(250,$step);
 $text->text($genome_fraction . "%");
 
-$step -= 80;
+$step -= 40;
+
+my $gfx_plot = $page->gfx();
+
+my $image_plot = $pdf->image_jpeg($plot);
+
+$gfx_plot->image($image_plot,330,$step,$image_plot->width/10,$image_plot->height/10);
+
+$step -= 10;
+$text->font($font,8);;
+$text->translate(330,$step);
+$text->text("Abdeckung der Genomsequenz (max. 200X)");
+
+$step -= 20;
 $text->font($b_font,12);
 $text->translate(50,$step);
 $text->text("Beobachtete Varianten");
@@ -413,7 +442,7 @@ my $table_ref = \@table;
 
 my $left_edge_of_table = 50;
 
-$step -= 20;
+$step -= 10;
 
 $pdftable->table(
      $pdf,
@@ -438,7 +467,7 @@ $pdftable->table(
 $text->font($font,8);
 
 $text->translate(50,90);
-$text->text("Dieser Report wurde erstellt mit der IKMB Virus-pipe Pipeline - version 1.0. Weitere Details unter: https://github.com/ikmb/virus-pipe");
+$text->text("IKMB Virus-pipe Pipeline - version $pipeline_version. Weitere Details unter: https://github.com/ikmb/virus-pipe");
 
 $text->translate(50,75);
 $text->text("Software tools:");
