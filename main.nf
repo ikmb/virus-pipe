@@ -665,7 +665,7 @@ process coverage_stats {
 	output:
 	file(global_dist) into BamStats
 	set val(id),file(sam_coverage) into BamCoverage
-	file(report)
+	set val(id),file(report) into coverage_report
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
@@ -821,7 +821,7 @@ process effect_prediction {
 // Write a per-patient report
 // **********************
 
-GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction)
+GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction).join(coverage_report)
 
 
 process final_report {
@@ -831,7 +831,7 @@ process final_report {
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
-	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants) from GroupedReports
+	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot) from GroupedReports
 	file(version_yaml) from software_versions_report
 
 	output:
@@ -845,7 +845,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --outfile $patient_report > $patient_report_json
+		covid_report.pl --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
 	"""
 
 }

@@ -27,6 +27,7 @@ my $bam_stats = undef;
 my $software = undef;
 my $assembly_stats = undef;
 my $vcf = undef;
+my $plot = undef;
 my $infile = undef;
 my $help;
 
@@ -39,6 +40,7 @@ GetOptions(
     "vcf=s" => \$vcf,
     "assembly_stats=s" => \$assembly_stats,
     "pangolin=s" => \$pangolin,
+    "plot=s" => \$plot,
     "outfile=s" => \$outfile);
 
 # Print Help and exit
@@ -407,6 +409,14 @@ $text->text("Assembly komplett:");
 $text->font($font,10);
 $text->translate(250,$step);
 $text->text($genome_fraction . "%");
+
+$step -= 30;
+
+my $gfx_plot = $page->gfx();
+
+my $image_plot = $pdf->image_jpeg($plot);
+
+$gfx_plot->image($image_plot,320,$step,$image_plot->width/10,$image_plot->height/10);
 
 $step -= 40;
 $text->font($b_font,12);
