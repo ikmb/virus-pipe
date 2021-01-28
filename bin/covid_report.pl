@@ -410,15 +410,20 @@ $text->font($font,10);
 $text->translate(250,$step);
 $text->text($genome_fraction . "%");
 
-$step -= 30;
+$step -= 40;
 
 my $gfx_plot = $page->gfx();
 
 my $image_plot = $pdf->image_jpeg($plot);
 
-$gfx_plot->image($image_plot,320,$step,$image_plot->width/10,$image_plot->height/10);
+$gfx_plot->image($image_plot,330,$step,$image_plot->width/10,$image_plot->height/10);
 
-$step -= 40;
+$step -= 10;
+$text->font($font,8);;
+$text->translate(330,$step);
+$text->text("Abdeckung der Genomsequenz (max. 200X)");
+
+$step -= 20;
 $text->font($b_font,12);
 $text->translate(50,$step);
 $text->text("Beobachtete Varianten");

@@ -25,8 +25,12 @@ cov %>%
   theme(text = element_text(size = 12,family="sans"),
         panel.grid.major.x = element_blank(),
         panel.background = element_blank(),
+	axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+	axis.title.y=element_blank(),
+	axis.text.y=element_blank(),
         panel.grid.major = element_line(color = "lightgrey"),
-        axis.line = element_line(colour = "black")) +
-  labs(title = basename)
+        axis.line = element_line(colour = "black")) 
   
 dev.off()
