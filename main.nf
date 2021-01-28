@@ -94,7 +94,7 @@ summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
 summary['HostBloomFilter'] = params.bloomfilter_host
-
+summary['MappingReference'] = params.ref_with_host
 // Header log info
 log.info "IKMB ------------------------------------------------------------------------------"
 log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d8888b. d88888b "
@@ -670,12 +670,13 @@ process coverage_stats {
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
 	sam_coverage = id + ".coverage.samtools.txt"
-	report = id + ".coverage.pdf"
+	report = id + ".jpg"
+	base_name = id 
 	
 	"""
 		mosdepth -t ${task.cpus} $id $bam
 		samtools depth -d 200  $bam > $sam_coverage
-		bam2coverage_plot.R $sam_coverage ${params.cov_lim} $report
+		bam2coverage_plot.R $sam_coverage $base_name
 	"""
 	
 }

@@ -1,17 +1,32 @@
 #!/usr/bin/env Rscript
+
+# Import library
 library(tidyverse)
+# Import argument. Set variables
+args = commandArgs(trailingOnly=TRUE) 
+fin <- args[1] 
+basename <- args[2] 
+fout <- paste0(basename, ".jpg")
 
-args = commandArgs(trailingOnly=TRUE)
-
+#fin <- "/home/lsilva/IKMB/projects/random/covid.coverage.plot/21Ord340-L1_S1_L001.coverage.samtools.txt" basename <- "Patient0"
 # Load data
-cov <- as.tbl(read.table(args[1])) %>% 
-	rename("Position" = V2) %>% rename("Coverage" = V3)
-limit <- args[2]
-
+cov <-
+  fin %>%
+  read.delim(stringsAsFactors = F, header = F) %>%
+  rename("Position" = "V2") %>%
+  rename("Coverage" = "V3")
 # Plot
-pdf(args[3])
-cov %>% select(Position, Coverage) %>% 
-	ggplot(aes(Position, Coverage)) + 
-	geom_area() + ggtitle(args[1]) + ylim(0,200)
-
+jpeg(filename = fout, units = "cm", height = 7.5, width = 18, res = 300) 
+cov %>%
+  ggplot(aes(x = Position, y = Coverage)) +
+  geom_area() +
+  scale_y_continuous(limits = c(0,200)) +
+  scale_x_continuous(limits = c(0,30000)) +
+  theme(text = element_text(size = 12),
+        panel.grid.major.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(color = "lightgrey"),
+        axis.line = element_line(colour = "black")) +
+  labs(title = basename)
+  
 dev.off()
