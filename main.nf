@@ -427,7 +427,7 @@ process assemble_virus {
 	assembly = id + ".spades.fasta"
 	def options = ""
 	if (params.guided) {
-		options = "--trusted-contigs ${REF}"
+		options = "--untrusted-contigs ${REF}"
 	}
 
 	"""
