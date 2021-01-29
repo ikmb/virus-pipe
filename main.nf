@@ -45,6 +45,9 @@ REF_NAME = "NC_045512.2"
 
 REF_WITH_HOST = file(params.ref_with_host)
 
+// Minimum file size in bytes to attempt assembly from
+size_limit = params.size_limit
+
 /*
 Primer sequences
 */
@@ -283,7 +286,7 @@ if (params.fast_filter) {
 	        set val(id),file(reads) from inputReformat
 
         	output:
-	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades )
+	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed )
 
         	script:
 	        left = id + "_R1_001.bloom_non_host.fastq.gz"
@@ -312,7 +315,7 @@ if (params.fast_filter) {
                 path(bwt_files) from host_genome.collect()
 
                 output:
-                set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades )
+                set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed  )
 
                 script:
                 left_clean = id + ".clean.R1.fastq.gz"
@@ -328,7 +331,7 @@ if (params.fast_filter) {
 
 
 } else {
-	inputBioBloomHost.into { inputKraken; inputPathoscopeMap; inputSpades  }
+	inputBioBloomHost.into { inputKraken; inputPathoscopeMap; inputSpades; inputFailed  }
 }
 
 // ************************
@@ -418,10 +421,10 @@ process assemble_virus {
 	params.assemble
 
 	input:
-	set val(id),file(left),file(right) from inputSpades
+	set val(id),file(left),file(right) from inputSpades.filter{ i,l,r -> r.size() > 500000 }
 
 	output:
-	set val(id),file(assembly) into contigsSpades
+	set val(id),file(assembly) optional true into contigsSpades
 	
 	script:
 	assembly = id + ".spades.fasta"
@@ -437,11 +440,57 @@ process assemble_virus {
 	"""
 }
 
+process fail_sample {
+
+
+	publishDir "${OUTDIR}/Failed", mode: 'copy'
+
+	input:
+	set val(id),file(left),file(right) from inputFailed.filter{ i,l,r -> r.size() < 500000 }
+
+	output:
+	file(failed_sample)
+
+	script:
+	failed_sample = id + ".failed.txt"
+
+	"""
+		echo "Failing $id due to low read count" > $failed_sample
+	"""
+
+}
+
+process assembly_scaffold {
+
+	label 'ragtag'
+
+        publishDir "${OUTDIR}/Assemblies", mode: 'copy'
+	
+	when:
+	params.assemble
+
+	input:
+	set val(id),file(assembly) from contigsSpades
+
+	output:
+	set val(id),file(pseudo) into contigsScaffolds
+
+	script:
+
+	pseudo = id + ".spades.scaffolds.fasta"
+
+	"""
+		ragtag.py scaffold $REF $assembly -f 800 --remove-small -C -t ${task.cpus} -o ragtag
+
+		cp ragtag/ragtag.scaffolds.fasta $pseudo
+	"""
+}
+
 // **************************
 // Run assembly QC with QUAST
 // **************************
 
-contigsSpades.into {assemblies; assemblies_qc; assemblies_pangolin }
+contigsScaffolds.into {assemblies; assemblies_qc; assemblies_pangolin }
 
 process assembly_pangolin {
 
