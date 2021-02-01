@@ -136,16 +136,33 @@ log.info "======================================================================
 // WORKFLOW STARTS HERE
 // ********************
 
+def returnFile(it) {
+    // Return file if it exists
+    inputFile = file(it)
+    if (!file(inputFile).exists()) exit 1, "Missing file in TSV file: ${inputFile}, see --help for more information"
+    return inputFile
+}
+
 Channel.fromPath(REF)
 	.into { inputBloomMaker; inputNormalize  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
+	.map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
 	.set { reads_fastp }
-} else {
-	reads_fastp = Channel.empty()
-}
+} else if (params.samples) {
 
+	Channel.from(file(params.samples))
+        .splitCsv(sep: ';', header: true)
+	.map { row ->
+                        def patient = row.IndivID
+			def sample = row.SampleID
+                        def left = returnFile( row.R1 )
+			def right = returnFile( row.R2)
+                        [ patient, sample, left, right ]
+                }
+       .set {  reads_fastp }
+}
 
 process get_software_versions {
 
@@ -191,7 +208,7 @@ process trim_reads {
         publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
 
         input:
-        set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
+        set val(patientID),val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:

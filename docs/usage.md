@@ -24,6 +24,23 @@ For more details on available options, see below.
 ### `--reads` 
 Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Must be enclosed in single-quotes.
 
+### `--samples`
+Path to a CSV formatted sample sheet as an alterantive to --reads. Expects the following columns:
+
+```
+IndivID;SampleID;R1;R2
+21Ord1339;21Ord1339-L1;/path/to/reads_R1_001.fastq.gz;/path/to/reads_R2_001.fastq.gz
+```
+
+A script is included with this code base to produce such a file from a folder of fastQ files
+
+
+```
+ruby /path/to/samplesheet_from_folder.rb -f /path/to/folder > Samples.csv
+```
+
+You can edit this file to replace the library-derived labels for IndivID and/or SampleID with an order number or patient ID. 
+
 ### `--run_name`
 Provide a usefull name to this analysis run (could be the LIMS project ID)
 
