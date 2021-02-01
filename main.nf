@@ -462,7 +462,7 @@ process fail_sample {
 
 process assembly_scaffold {
 
-	label 'ragtag'
+	label 'std'
 
         publishDir "${OUTDIR}/Assemblies", mode: 'copy'
 	
