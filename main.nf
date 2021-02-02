@@ -136,16 +136,33 @@ log.info "======================================================================
 // WORKFLOW STARTS HERE
 // ********************
 
+def returnFile(it) {
+    // Return file if it exists
+    inputFile = file(it)
+    if (!file(inputFile).exists()) exit 1, "Missing file in TSV file: ${inputFile}, see --help for more information"
+    return inputFile
+}
+
 Channel.fromPath(REF)
-	.into { inputBloomMaker; inputNormalize  }
+	.into { inputBloomMaker; inputNormalize; Ref2Consensus  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
+	.map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
 	.set { reads_fastp }
-} else {
-	reads_fastp = Channel.empty()
-}
+} else if (params.samples) {
 
+	Channel.from(file(params.samples))
+        .splitCsv(sep: ';', header: true)
+	.map { row ->
+                        def patient = row.IndivID
+			def sample = row.SampleID
+                        def left = returnFile( row.R1 )
+			def right = returnFile( row.R2)
+                        [ patient, sample, left, right ]
+                }
+       .set {  reads_fastp }
+}
 
 process get_software_versions {
 
@@ -191,11 +208,12 @@ process trim_reads {
         publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
 
         input:
-        set val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
+        set val(patientID),val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
-	set val(sampleID),file(left),file(right) into (inputBowtie, inputBioBloomHost, inputBioBloomTarget, inputBowtieFilter )
+	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
+	set val(patientID),val(sampleID),file(left),file(right) into (inputBowtie, inputBowtieFilter, inputBioBloomHost )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -256,10 +274,10 @@ if (params.fast_filter) {
 		publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
 
 		input:
-		set val(id),file(left_reads),file(right_reads) from inputBioBloomHost
+		set val(patientID),val(id),file(left_reads),file(right_reads) from inputBioBloomHost
 
 		output:
-		set id,file(clean_reads) into inputReformat
+		set val(patientID),val(id),file(clean_reads) into inputReformat
 		file(bloom) into BloomReportHost
 
 		script:
@@ -283,10 +301,10 @@ if (params.fast_filter) {
 	        publishDir "${OUTDIR}/${id}//CleanReads", mode: 'copy'
 
         	input:
-	        set val(id),file(reads) from inputReformat
+	        set val(patientID),val(id),file(reads) from inputReformat
 
         	output:
-	        set val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed )
+	        set val(patientID),val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed )
 
         	script:
 	        left = id + "_R1_001.bloom_non_host.fastq.gz"
@@ -311,11 +329,11 @@ if (params.fast_filter) {
                 publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
 
                 input:
-                set val(id),file(left_reads),file(right_reads) from inputBowtieFilter
+                set val(patientID),val(id),file(left_reads),file(right_reads) from inputBowtieFilter
                 path(bwt_files) from host_genome.collect()
 
                 output:
-                set val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed  )
+                set val(patientID),val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed  )
 
                 script:
                 left_clean = id + ".clean.R1.fastq.gz"
@@ -374,10 +392,10 @@ process kraken2_search {
 	params.taxonomy
 
 	input:
-	set val(id),file(left),file(right) from inputKraken
+	set val(patientID),val(id),file(left),file(right) from inputKraken
 
 	output:
-	set val(id),file(report) into (KrakenReport, Kraken2Report)
+	set val(patientID),val(id),file(report) into (KrakenReport, Kraken2Report)
 	file(kraken_log)
 
 	script:
@@ -411,20 +429,20 @@ process kraken2yaml {
 
 }
 
-process assemble_virus {
+process denovo_assemble_virus {
 
 	label 'std'
 
-	publishDir "${OUTDIR}/Assemblies", mode: 'copy'
+	publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 
 	when:
 	params.assemble
 
 	input:
-	set val(id),file(left),file(right) from inputSpades.filter{ i,l,r -> r.size() > 500000 }
+	set val(patientID),val(id),file(left),file(right) from inputSpades.filter{ p,i,l,r -> r.size() > 500000 }
 
 	output:
-	set val(id),file(assembly) optional true into contigsSpades
+	set val(patientID),val(id),file(assembly) optional true into contigsSpades
 	
 	script:
 	assembly = id + ".spades.fasta"
@@ -446,7 +464,7 @@ process fail_sample {
 	publishDir "${OUTDIR}/Failed", mode: 'copy'
 
 	input:
-	set val(id),file(left),file(right) from inputFailed.filter{ i,l,r -> r.size() < 500000 }
+	set val(patientID),val(id),file(left),file(right) from inputFailed.filter{ p,i,l,r -> r.size() < 500000 }
 
 	output:
 	file(failed_sample)
@@ -460,20 +478,20 @@ process fail_sample {
 
 }
 
-process assembly_scaffold {
+process denovo_assembly_scaffold {
 
 	label 'std'
 
-        publishDir "${OUTDIR}/Assemblies", mode: 'copy'
+        publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 	
 	when:
 	params.assemble
 
 	input:
-	set val(id),file(assembly) from contigsSpades
+	set val(patientID),val(id),file(assembly) from contigsSpades
 
 	output:
-	set val(id),file(pseudo) into contigsScaffolds
+	set val(patientID),val(id),file(pseudo) into contigsScaffolds
 
 	script:
 
@@ -490,50 +508,7 @@ process assembly_scaffold {
 // Run assembly QC with QUAST
 // **************************
 
-contigsScaffolds.into {assemblies; assemblies_qc; assemblies_pangolin }
-
-process assembly_pangolin {
-
-	label 'pangolin'
-
-	publishDir "${OUTDIR}/${id}/Pangolin", mode: 'copy'
-
-	input:
-	set val(id),path(assembly) from assemblies_pangolin
-
-	output:
-	set val(id),path(report) into (pangolin_report, Pangolin2Report)
-
-	script:
-
-	report = id + ".pangolin.csv"
-
-	"""
-		pangolin --outfile $report $assembly 
-	"""
-}
-
-process pangolin2yaml {
-
-	label 'std'
-
-	publishDir "${OUTDIR}/Pangolin", mode: 'copy'
-
-	input:
-	file(reports) from pangolin_report.collect()
-
-	output:
-	file(report) into PangolinYaml
-
-	script:
-
-	report = "pangolin_report_mqc.yaml"
-
-	"""
-		pangolin2yaml.pl > $report
-	"""
-
-}
+contigsScaffolds.into {assemblies; assemblies_qc }
 
 process assembly_qc {
 
@@ -542,11 +517,11 @@ process assembly_qc {
 	publishDir "${OUTDIR}/${id}/Assembly/Spades/QC", mode: 'copy'
 
 	input:
-	set val(id),path(assembly) from assemblies_qc
+	set val(patientID),val(id),path(assembly) from assemblies_qc
 
 	output:
 	path(quast_dir) into QuastReport
-	set val(id),file("${quast_dir}/report.tsv") into Quast2Report
+	set val(patientID),val(id),file("${quast_dir}/report.tsv") into Quast2Report
 	file("quast_results")
 
 	script:
@@ -574,10 +549,10 @@ if (params.pathoscope) {
 		label 'pathoscope'
 
 		input:
-		set id,file(left_reads),file(right_reads) from inputPathoscopeMap
+		set val(patientID),val(id),file(left_reads),file(right_reads) from inputPathoscopeMap
 
 		output:
-		set id,file(pathoscope_sam) into inputPathoscopeId
+		set val(patientID),val(id),file(pathoscope_sam) into inputPathoscopeId
 
 		script:
 		pathoscope_sam = id + ".sam"
@@ -599,10 +574,10 @@ if (params.pathoscope) {
 		publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
 
 		input:
-		set id,file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
+		set val(patientID),val(id),file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
 
 		output:
-		set id,file(pathoscope_tsv) into outputPathoscopeId
+		set val(patientID),val(id),file(pathoscope_tsv) into outputPathoscopeId
 
 		script:
 
@@ -627,10 +602,10 @@ process align_viral_reads {
 	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
 
 	input:
-	set val(sampleID),file(left),file(right) from inputBowtie
+	set val(patientID),val(sampleID),file(left),file(right) from inputBowtie
 
 	output:
-	set val(sampleID),file(bam),file(bai) into bowtieBam
+	set val(patientID),val(sampleID),file(bam),file(bai) into bowtieBam
 
 	script:
 	ref_name = REF_WITH_HOST.getBaseName()
@@ -653,11 +628,11 @@ process mark_dups {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from bowtieBam
+	set val(patientID),val(id),file(bam),file(bai) from bowtieBam
 
 	output:
-	set val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage )
-	set val(id),file(bam_md),file(bai_md) into HostBam
+	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage, bam2mask)
+	set val(patientID),val(id),file(bam_md),file(bai_md) into HostBam
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -680,27 +655,6 @@ process mark_dups {
 // ************************
 // Coverage statistics
 // ************************
-process bam2bed {
-
-	label 'bedtools'
-
-	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
-
-	input:
-	set val(id),file(bam_md),file(bai_md) from HostBam.filter { b -> b.size() > 8000 }
-
-	output:
-	file(bed) 
-
-	script:
-	
-	bed = bam_md.getBaseName() + ".Host.bed"
-
-	"""
-		bedtools bamtobed -i $bam_md | grep ^chr > $bed
-	"""
-
-}
 
 process coverage_stats {
 	
@@ -709,12 +663,12 @@ process coverage_stats {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(id),file(bam),file(bai) from inputBamStats.filter{ i,b,d -> b.size() > 10000 }
+	set val(patientID),val(id),file(bam),file(bai) from inputBamStats.filter{ p,i,b,d -> b.size() > 10000 }
 
 	output:
 	file(global_dist) into BamStats
-	set val(id),file(sam_coverage) into BamCoverage
-	set val(id),file(report) into coverage_report
+	set val(patientID),val(id),file(sam_coverage) into BamCoverage
+	set val(patientID),val(id),file(report) into coverage_report
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
@@ -737,11 +691,11 @@ process align_stats {
         publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'
 
         input:
-        set val(sampleID),file(bam),file(bai) from inputBamCoverage
+        set val(patientID),val(sampleID),file(bam),file(bai) from inputBamCoverage
 
 	output:
 	file(align_stats) into BamAlignStats
-	set val(sampleID),file(align_stats) into Samtools2Report
+	set val(patientID),val(sampleID),file(align_stats) into Samtools2Report
 
 	script:
 	align_stats = sampleID + ".txt"
@@ -761,10 +715,10 @@ process call_variants {
 
 	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 	input:
-	set val(id),file(bam),file(bai) from bamMD
+	set val(patientID),val(id),file(bam),file(bai) from bamMD
 
 	output:
-	set val(id),file(vcf) into fbVcf
+	set val(patientID),val(id),file(vcf) into fbVcf
 
 	script:
 	base_name = bam.getBaseName()
@@ -786,10 +740,10 @@ process filter_vcf {
 	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
-	set val(id),file(vcf) from fbVcf
+	set val(patientID),val(id),file(vcf) from fbVcf
 
 	output:
-	set val(id),file(vcf_filtered) into VcfNormalize
+	set val(patientID),val(id),file(vcf_filtered) into VcfNormalize
 
 	script:
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
@@ -806,19 +760,159 @@ process normalize_vcf {
 	label 'std'
 
 	input:
-	set val(id),file(vcf) from VcfNormalize
+	set val(patientID),val(id),file(vcf) from VcfNormalize
         file(ref_genome) from inputNormalize.collect()
 
 	output:
-        set val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+        set val(patientID),val(id),file(vcf_filtered) into (finalVcf,Vcf2Report,VcfPredict)
+	set val(patientID),val(id),file(vcf_filtered_gz),file(vcf_filtered_tbi) into (Vcf2Mask,Vcf2Consensus)
 
 	script:
 
 	vcf_filtered = vcf.getBaseName() + ".normalized.vcf"
+	vcf_filtered_gz = vcf_filtered + ".gz"
+	vcf_filtered_tbi = vcf_filtered_gz + ".tbi"
 
 	"""
 		vt normalize -o $vcf_filtered -r $ref_genome $vcf
+
+		bgzip -c $vcf_filtered > $vcf_filtered_gz
+		tabix $vcf_filtered_gz
+		
 	"""
+
+}
+
+inputMasking = bam2mask.join(Vcf2Mask, by: [0,1] )
+
+process create_cov_mask {
+
+	publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'	
+
+	label 'bedtools'
+	
+	input:
+	set val(patientID),val(sampleID),file(bam),file(bai),file(vcf),file(tbi) from inputMasking
+
+	output:
+	set val(patientID),val(sampleID),file(mask) into ConsensusMask
+
+	script:
+
+	mask = sampleID + ".coverage_mask.bed"
+
+	"""
+
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < 10' | bedtools merge > tmp.bed
+		bedtools intersect -v -a tmp.bed -b $vcf > $mask
+	"""
+
+}
+
+MakeConsensus = Vcf2Consensus.join(ConsensusMask, by: [0,1])
+
+process consensus_assembly {
+
+	//publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
+
+	label 'std'
+
+	input:
+	set val(patientID),val(id),file(vcf),file(tbi),file(bed) from MakeConsensus
+	file(ref_assembly) from Ref2Consensus.collect()
+	
+	output:
+	set val(patientID),val(id),file(consensus) into Consensus2Header
+
+	script:
+
+	consensus = id + ".consensus_assembly.fa"
+	
+	"""
+		bcftools consensus -I \
+			-o $consensus \
+			-f $ref_assembly \
+			-m $bed \
+			--sample $id \
+			$vcf 
+	"""
+}
+
+process consensus_header {
+
+	publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
+
+	label 'std'
+
+	input:
+	set val(patientID),val(id),file(consensus) from Consensus2Header
+
+	output:
+	set val(patientID),val(id),file(consensus_reheader) into assemblies_pangolin
+	file(consensus_masked_reheader)
+
+	script:
+
+	consensus_reheader = id + ".iupac_consensus.fasta"
+	consensus_masked_reheader = id + ".masked_consensus.fasta"
+
+	header = id + "_iupac_consensus_v" + params.version 
+	masked_header = id + "_masked_consensus_v" + params.version
+
+	"""
+		echo '>$header' > $consensus_reheader
+		tail -n +2 $consensus | fold -w 80 >> $consensus_reheader
+		echo  >> $consensus_reheader
+
+		echo '>$masked_header' > $consensus_masked_reheader
+
+		
+		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
+		echo >> $consensus_masked_reheader
+	"""
+
+}
+
+process assembly_pangolin {
+
+        label 'pangolin'
+
+        publishDir "${OUTDIR}/${id}/Pangolin", mode: 'copy'
+
+        input:
+        set val(patientID),val(id),path(assembly) from assemblies_pangolin
+
+        output:
+        set val(patientID),val(id),path(report) into (pangolin_report, Pangolin2Report)
+
+        script:
+
+        report = id + ".pangolin.csv"
+
+        """
+                pangolin --outfile $report $assembly
+        """
+}
+
+process pangolin2yaml {
+
+        label 'std'
+
+        publishDir "${OUTDIR}/Pangolin", mode: 'copy'
+
+        input:
+        file(reports) from pangolin_report.collect()
+
+        output:
+        file(report) into PangolinYaml
+
+        script:
+
+        report = "pangolin_report_mqc.yaml"
+
+        """
+                pangolin2yaml.pl > $report
+        """
 
 }
 
@@ -829,11 +923,11 @@ process vcf_stats {
 	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
-	set val(id),file(vcf) from finalVcf
+	set val(patientID),val(id),file(vcf) from finalVcf
 
 	output:
 	file(stats) into VcfStats
-	set val(id),file(stats) into VcfReport
+	set val(patientID),val(id),file(stats) into VcfReport
 
 	script:
 	stats = vcf.getBaseName() + ".stats"
@@ -851,10 +945,10 @@ process effect_prediction {
 	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
-	set val(id),file(vcf) from VcfPredict
+	set val(patientID),val(id),file(vcf) from VcfPredict
 
 	output:
-	set val(id),file(effects) into EffectPrediction
+	set val(patientID),val(id),file(effects) into EffectPrediction
 
 	script:
 
@@ -870,7 +964,7 @@ process effect_prediction {
 // Write a per-patient report
 // **********************
 
-GroupedReports = Kraken2Report.join(Pangolin2Report).join(Samtools2Report).join(Quast2Report).join(EffectPrediction).join(coverage_report)
+GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(Quast2Report,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
 
 
 process final_report {
@@ -880,7 +974,7 @@ process final_report {
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
-	set val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot) from GroupedReports
+	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot) from GroupedReports
 	file(version_yaml) from software_versions_report
 
 	output:
@@ -894,7 +988,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
+		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
 	"""
 
 }

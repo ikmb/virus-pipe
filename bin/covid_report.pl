@@ -26,6 +26,7 @@ my $kraken = undef;
 my $bam_stats = undef;
 my $software = undef;
 my $assembly_stats = undef;
+my $patient = undef;
 my $vcf = undef;
 my $plot = undef;
 my $infile = undef;
@@ -35,6 +36,7 @@ GetOptions(
     "help" => \$help,
     "infile=s" => \$infile,
     "kraken=s" => \$kraken,
+    "patient=s" => \$patient,
     "software=s" => \$software,
     "bam_stats=s" => \$bam_stats,
     "vcf=s" => \$vcf,
@@ -49,11 +51,11 @@ if ($help) {
     exit(0);
 }
 
-my $patient = (split /\./, $kraken)[0];
+my $library = (split /\./, $kraken)[0];
 
 my %data; # hold information for JSON reporting
 
-$data{"Sample"}= {"library" => $patient} ;
+$data{"Sample"}= {"library" => $library, "patient" => $patient} ;
 $data{"Reference"} = "NC_045512.2.";
 
 ##########################
@@ -354,11 +356,20 @@ $text->text($pipeline_version);
 $step -= 30;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Patient/Library:");
+$text->text("Patient");
 
 $text->font($font,10);
 $text->translate(250,$step);
 $text->text($patient);
+
+$step -= 20;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("Library");
+
+$text->font($font,10);
+$text->translate(250,$step);
+$text->text($library);
 
 $step -= 20;
 $text->font($b_font,10);
