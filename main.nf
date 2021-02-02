@@ -713,7 +713,8 @@ process call_variants {
 	
        	label 'std'
 
-	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	publishDir "${OUTDIR}/${id}/Variants/Raw", mode: 'copy'
+
 	input:
 	set val(patientID),val(id),file(bam),file(bai) from bamMD
 
@@ -782,6 +783,11 @@ process normalize_vcf {
 	"""
 
 }
+
+
+// *************************
+// Make consensus assembly
+// *************************
 
 inputMasking = bam2mask.join(Vcf2Mask, by: [0,1] )
 
@@ -872,6 +878,10 @@ process consensus_header {
 	"""
 
 }
+
+// **********************
+// Determine lineage
+// **********************
 
 process assembly_pangolin {
 
