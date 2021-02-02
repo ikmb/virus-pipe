@@ -10,6 +10,7 @@ This pipeline can process Illumina short reads from sequenced viral cDNA, Metatr
 * map viral reads against a reference genome and perform variant calling (default: COVID19)
 * assembly viral genome
 * - align de-novo assembly against reference genome
+* - generate consensus assembly (RKI compliant)
 
 ## Basic execution
 

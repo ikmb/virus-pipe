@@ -23,6 +23,7 @@ perl my_script.pl
 my $outfile = undef;
 my $pangolin = undef;
 my $kraken = undef;
+my $depth = undef;
 my $bam_stats = undef;
 my $software = undef;
 my $assembly_stats = undef;
@@ -37,6 +38,7 @@ GetOptions(
     "infile=s" => \$infile,
     "kraken=s" => \$kraken,
     "patient=s" => \$patient,
+    "depth=s" => \$depth,
     "software=s" => \$software,
     "bam_stats=s" => \$bam_stats,
     "vcf=s" => \$vcf,
@@ -83,6 +85,28 @@ while (<$IN>) {
 close($IN);
 
 $data{"Software"} = { %tools };
+
+########################
+## PARSE MOSDEPTH REPORT
+#######################
+
+open (my $IN, '<', $depth) or die "FATAL: Can't open file: $depth for reading.\n$!\n";
+
+my $target_cov = "undetermined";
+
+chomp(my @lines = <$IN>);
+
+foreach my $line (@lines) {
+
+        chomp($line);
+
+	if ($line =~ /^total	30	.*/) {
+		my ($t,$c,$target_coverage) = split(/\t/,$line);
+		$target_cov = $target_coverage*100;
+	}
+
+}
+close($IN);
 
 ########################
 ## PARSE PANGOLIN REPORT
@@ -167,7 +191,7 @@ while (<$IN>) {
 
 close($IN);
 
-$data{"reads"}= {"mapped" => $mapped_reads } ;
+$data{"reads"}= {"mapped" => $mapped_reads , "coverage_30X" => $target_cov} ;
 
 #########################
 ## PARSE ASSEMBLY STATS
@@ -415,11 +439,11 @@ $text->text($mapped_reads);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Assembly komplett:");
+$text->text("Abdeckung mit mind. 30X:");
 
 $text->font($font,10);
 $text->translate(250,$step);
-$text->text($genome_fraction . "%");
+$text->text($target_cov . "%");
 
 $step -= 40;
 

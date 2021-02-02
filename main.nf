@@ -668,7 +668,7 @@ process coverage_stats {
 	output:
 	file(global_dist) into BamStats
 	set val(patientID),val(id),file(sam_coverage) into BamCoverage
-	set val(patientID),val(id),file(report) into coverage_report
+	set val(patientID),val(id),file(report),file(global_dist) into coverage_report
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
@@ -809,7 +809,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < 10' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.min_cov}' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 
@@ -984,7 +984,7 @@ process final_report {
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot) from GroupedReports
+	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot),file(mosdepth) from GroupedReports
 	file(version_yaml) from software_versions_report
 
 	output:
@@ -998,7 +998,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
+		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
 	"""
 
 }
