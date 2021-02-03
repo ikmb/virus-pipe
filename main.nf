@@ -854,7 +854,7 @@ process consensus_header {
 	set val(patientID),val(id),file(consensus) from Consensus2Header
 
 	output:
-	set val(patientID),val(id),file(consensus_reheader) into assemblies_pangolin
+	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc)
 	file(consensus_masked_reheader)
 
 	script:
@@ -877,6 +877,26 @@ process consensus_header {
 		echo >> $consensus_masked_reheader
 	"""
 
+}
+
+process consensus_qc {
+
+	label 'gaas'
+
+	publishDir "${OUTDIR}/${id}/QC", mode: 'copy'
+
+	input:
+	set val(patientID),val(id),file(consensus_reheader)  from consensus2qc
+
+	output:
+	set val(patientID),val(id),file(stats) into ConsensusStats
+
+	script:
+	stats = id + "_assembly_report.txt"
+
+	"""
+		gaas_fasta_statistics.pl -f $consensus_reheader -o stats > $stats
+	"""
 }
 
 // **********************
@@ -974,7 +994,7 @@ process effect_prediction {
 // Write a per-patient report
 // **********************
 
-GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(Quast2Report,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
+GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(ConsensusStats,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
 
 
 process final_report {
@@ -984,7 +1004,7 @@ process final_report {
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot),file(mosdepth) from GroupedReports
+	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(fasta_qc),file(variants),file(coverage_plot),file(mosdepth) from GroupedReports
 	file(version_yaml) from software_versions_report
 
 	output:
@@ -998,7 +1018,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
+		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $fasta_qc --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
 	"""
 
 }
