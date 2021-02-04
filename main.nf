@@ -144,7 +144,7 @@ def returnFile(it) {
 }
 
 Channel.fromPath(REF)
-	.into { inputBloomMaker; inputNormalize; Ref2Consensus  }
+	.into { inputBloomMaker; inputNormalize; Ref2Consensus; Ref2BwaIdx  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -213,7 +213,7 @@ process trim_reads {
 
         output:
 	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),file(left),file(right) into (inputBowtie, inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),file(left),file(right) into ( inputBwa, inputBowtieFilter, inputBioBloomHost )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -593,34 +593,12 @@ if (params.pathoscope) {
 } // end pathoscope
 
 // **************************
-// align reads against reference genome
+// RKI-compliant: align reads against reference genome
 // **************************
-process align_viral_reads_bt {
 
-       	label 'std'
+process align_make_index_bwa {
 
-	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
-
-	input:
-	set val(patientID),val(sampleID),file(left),file(right) from inputBowtie
-
-	output:
-	set val(patientID),val(sampleID),file(bam),file(bai) into bowtieBam
-
-	script:
-	ref_name = REF_WITH_HOST.getBaseName()
-	bam = sampleID + "." + ref_name + ".aligned.bam"
-	bai = bam + ".bai"
-
-	"""
-		bowtie2 --rg-id ${sampleID} --rg PL:Illumina --rg SM:${sampleID} --rg CN:CCGA -x $REF_WITH_HOST -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
-		samtools index $bam
-	"""
-}
-
-process align_make_bwa_index {
-
-	label 'bwa'
+	label 'std'
 
 	publishDir "${OUTDIR}/Reference/BWA", mode: 'copy'
 
@@ -638,9 +616,9 @@ process align_make_bwa_index {
 	bwa_pac = base_name + ".pac"
 	bwa_sa = base_name + ".sa"
 	
-	""""
+	"""
 		bwa index $fasta
-	""""
+	"""
 }
 
 process align_viral_reads_bwa {
@@ -660,11 +638,14 @@ process align_viral_reads_bwa {
         bai = bam + ".bai"	
 
 	"""
-		bwa mem -H $DICT -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
+		samtools dict -a $ref_name -o assembly.dict -s Sars-CoV2 $fasta
+		bwa mem -H assembly.dict -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
                         -t ${task.cpus} ${fasta} $left $right \
-                        | samtools sort -n -O bam -o $outfile -
+                        | samtools sort -O bam -o $bam -
+		samtools index $bam
 	"""
 }
+
 // ***********************
 // Mark duplicate reads
 // ***********************
@@ -675,7 +656,7 @@ process mark_dups {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(bam),file(bai) from bowtieBam
+	set val(patientID),val(id),file(bam),file(bai) from bwaBam
 
 	output:
 	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage, bam2mask)
@@ -689,7 +670,8 @@ process mark_dups {
 
 	"""
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
-		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - $bam_md
+		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - tmp.md.bam
+		samtools rmdup tmp.md.bam $bam_md
 		samtools index $bam_md
 
 		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
@@ -863,7 +845,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < 10' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.var_call_cov}' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 
