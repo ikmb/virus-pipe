@@ -8,6 +8,8 @@ extra_fn_clean_exts:
     - _R1
     - _R2
     - .dedup
+    - type: regexp
+      pattern: "_S[0-9]_L00[0-9]$"
 report_comment: >
     This report has been generated automatically by the IKMB Virus pipeline.
     For help interpreting the outputs, please see: https://github.com/ikmb/virus-pipe

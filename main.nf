@@ -224,8 +224,8 @@ process trim_reads {
 
         left = fastqR1.getBaseName() + "_trimmed.fastq.gz"
         right = fastqR2.getBaseName() + "_trimmed.fastq.gz"
-        json = fastqR1.getBaseName() + ".fastp.json"
-        html = fastqR1.getBaseName() + ".fastp.html"
+        json = sampleID + ".fastp.json"
+        html = sampleID + ".fastp.html"
 
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right $options -f $params.clip -t $params.clip --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
@@ -595,7 +595,7 @@ if (params.pathoscope) {
 // **************************
 // align reads against reference genome
 // **************************
-process align_viral_reads {
+process align_viral_reads_bt {
 
        	label 'std'
 
@@ -618,6 +618,53 @@ process align_viral_reads {
 	"""
 }
 
+process align_make_bwa_index {
+
+	label 'bwa'
+
+	publishDir "${OUTDIR}/Reference/BWA", mode: 'copy'
+
+	input:
+	file(fasta) from Ref2BwaIdx
+
+	output:
+	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) into BwaIndex
+
+	script:
+	base_name = fasta.getName()
+	bwa_amb = base_name + ".amb"
+	bwa_ann = base_name + ".ann"
+	bwa_btw = base_name + ".bwt"
+	bwa_pac = base_name + ".pac"
+	bwa_sa = base_name + ".sa"
+	
+	""""
+		bwa index $fasta
+	""""
+}
+
+process align_viral_reads_bwa {
+
+	label 'std'
+
+	input:
+	set val(patientID),val(sampleID),file(left),file(right) from inputBwa
+	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) from BwaIndex.collect()
+
+	output:
+	set val(patientID),val(sampleID),file(bam),file(bai) into bwaBam
+
+	script:
+	ref_name = fasta.getBaseName()
+        bam = sampleID + "." + ref_name + ".aligned.bam"
+        bai = bam + ".bai"	
+
+	"""
+		bwa mem -H $DICT -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
+                        -t ${task.cpus} ${fasta} $left $right \
+                        | samtools sort -n -O bam -o $outfile -
+	"""
+}
 // ***********************
 // Mark duplicate reads
 // ***********************
@@ -726,7 +773,13 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes ${params.freebayes_options} -f $REF_WITH_HOST $bam > $vcf
+		freebayes --genotype-qualities \
+			--min-coverage $params.var_call_cov \
+			--haplotype-length -1 \
+			--min-alternate-fraction $params.var_call_frac \
+			--min-alternate-count $params.var_call_count \
+			--pooled-continuous \
+			-f $REF_WITH_HOST $bam > $vcf
 	"""
 
 }
@@ -750,7 +803,7 @@ process filter_vcf {
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
 
 	"""
-		bcftools filter ${params.filter_options} $vcf > $vcf_filtered
+		bcftools filter -e 'INFO/MQM < ${params.var_filter_mqm} | INFO/SAP > ${params.var_filter_sap} | QUAL < ${params.var_filter_qual}'  $vcf > $vcf_filtered
 	"""
 }
 
@@ -775,7 +828,9 @@ process normalize_vcf {
 	vcf_filtered_tbi = vcf_filtered_gz + ".tbi"
 
 	"""
-		vt normalize -o $vcf_filtered -r $ref_genome $vcf
+		vt normalize -o tmp.vcf -r $ref_genome $vcf
+
+		adjust_gt_rki.py -o $vcf_filtered --vf $params.cns_gt_adjust $vcf
 
 		bgzip -c $vcf_filtered > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
@@ -783,7 +838,6 @@ process normalize_vcf {
 	"""
 
 }
-
 
 // *************************
 // Make consensus assembly
@@ -809,7 +863,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.min_cov}' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < 10' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 

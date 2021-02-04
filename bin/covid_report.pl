@@ -380,7 +380,7 @@ $text->text($pipeline_version);
 $step -= 30;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Patient");
+$text->text("Alternative ID");
 
 $text->font($font,10);
 $text->translate(250,$step);
@@ -389,7 +389,7 @@ $text->text($patient);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Library");
+$text->text("Library ID");
 
 $text->font($font,10);
 $text->translate(250,$step);

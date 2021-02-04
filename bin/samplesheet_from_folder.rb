@@ -14,6 +14,7 @@ opts.on("-f","--folder", "=FOLDER","Folder to scan") {|argument| options.folder 
 opts.on("-c","--centre", "=CENTRE","Name of sequencing centre") {|argument| options.centre = argument }
 opts.on("-p","--platform", "=PLATFORM","Name of sequencing instrument") {|argument| options.platform = argument }
 opts.on("-s","--sanity", "Perform sanity check of md5 sums") { options.sanity = true }
+opts.on("-l","--lookup", "=LOOKUP","Add patient IDs from lookup table") { |argument| options.lookup = argument }
 opts.on("-h","--help","Display the usage information") {
  puts opts
  exit
@@ -33,12 +34,22 @@ groups = fastq_files.group_by{|f| f.split("/")[-1].split(/_S/)[0] }
 warn "Building input sample sheet from FASTQ folder"
 warn "Performing sanity check on md5sums" if options.sanity
 
+lookup_table = {}
+if options.lookup
+	warn "Using lookup table to attach patient IDs"
+	lines = IO.readlines(options.lookup)
+	lines.each do |line|
+		next unless line.include?(",")
+		lib,patient = line.strip.split(",")
+		lookup_table[lib] = patient
+	end
+end
+	
 options.platform ? sequencer = options.platform : sequencer = "NovaSeq6000"
 
 puts "IndivID;SampleID;R1;R2"
 
-#G00076-L2_S19_L003_R1_001.fastq.gz
-
+patients_replaced = 0
 # group = the library id, may be split across lanes
 groups.each do |group, files|
 
@@ -68,6 +79,11 @@ groups.each do |group, files|
         	sample = group.split("_S")[0]
 		individual = group.split("-")[0]
 
+		if lookup_table.has_key?(sample)
+			individual = lookup_table[sample]
+			patients_replaced += 1
+		end
+
         	e = `zcat #{left} | head -n1 `
 		header = e
 
@@ -82,4 +98,6 @@ groups.each do |group, files|
 	end
 end
 
-
+if (options.lookup)
+	warn "Replaced #{patients_replaced} patient IDs from lookup file"
+end
