@@ -5,6 +5,7 @@ use Getopt::Long;
 use PDF::API2;
 use PDF::Table;
 use JSON;
+use  POSIX;
 
 my $usage = qq{
 perl my_script.pl
@@ -100,7 +101,7 @@ foreach my $line (@lines) {
 
         chomp($line);
 
-	if ($line =~ /^total	30	.*/) {
+	if ($line =~ /^total	20	.*/) {
 		my ($t,$c,$target_coverage) = split(/\t/,$line);
 		$target_cov = $target_coverage*100;
 	}
@@ -191,7 +192,7 @@ while (<$IN>) {
 
 close($IN);
 
-$data{"reads"}= {"mapped" => $mapped_reads , "coverage_30X" => $target_cov} ;
+$data{"reads"}= {"mapped" => $mapped_reads , "coverage_20X" => $target_cov} ;
 
 #########################
 ## PARSE ASSEMBLY STATS
@@ -200,25 +201,24 @@ $data{"reads"}= {"mapped" => $mapped_reads , "coverage_30X" => $target_cov} ;
 open (my $IN, '<', $assembly_stats) or die "FATAL: Can't open file: $assembly_stats for reading.\n$!\n";
 
 my $assembly_length = "undetermined";
-my $reference_length = "undetermined";
+my $assembly_gaps = "undetermined";
 my $genome_fraction = "undetermined";
-
 
 while (<$IN>) {
 
         chomp;
         my $line = $_;
 
-        if ($line =~ /.*Genome fraction.*/) {
-
-		my ($key,$gf) = split(/\t/, $line);
-		$genome_fraction = $gf;
+        if ($line =~ /.*Nb of nucleotides \(counting.*/) {
+		($assembly_length) = $line =~ /(\d+)/;
+	} elsif ( $line =~ /.Nb of Ns./) {
+		($assembly_gaps) = $line =~ /(\d+)/;
+		$genome_fraction = ($assembly_gaps/$assembly_length) ;
 	}
-
 }
 close($IN);
 
-$data{"Assembly"}= {"Komplett" => $genome_fraction} ;
+$data{"Assembly"}= {"Komplett" => $genome_fraction, "Laenge" => $assembly_length, "Gaps" => $assembly_gaps} ;
 
 #########################
 ## PARSE SnpEff VCF FILE
@@ -380,7 +380,7 @@ $text->text($pipeline_version);
 $step -= 30;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Patient");
+$text->text("Alternative ID");
 
 $text->font($font,10);
 $text->translate(250,$step);
@@ -389,7 +389,7 @@ $text->text($patient);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Library");
+$text->text("Library ID");
 
 $text->font($font,10);
 $text->translate(250,$step);
@@ -439,13 +439,35 @@ $text->text($mapped_reads);
 $step -= 20;
 $text->font($b_font,10);
 $text->translate(50,$step);
-$text->text("Abdeckung mit mind. 30X:");
+$text->text("Anteil Ns am Assembly:");
 
 $text->font($font,10);
 $text->translate(250,$step);
-$text->text($target_cov . "%");
+my $rounded = 100*(sprintf "%.2f", $genome_fraction);
 
-$step -= 40;
+if ($rounded > 5) {
+        $text->fillcolor('red');
+}
+
+$text->text( $rounded . "%");
+$text->fillcolor('black');
+
+$step -= 20;
+$text->font($b_font,10);
+$text->translate(50,$step);
+$text->text("Abdeckung mit mind. 20X:");
+
+$text->font($font,10);
+$text->translate(250,$step);
+
+if ($target_cov < 95) {
+        $text->fillcolor('red');
+}
+
+$text->text($target_cov . "%");
+$text->fillcolor('black');
+
+$step -= 20;
 
 my $gfx_plot = $page->gfx();
 

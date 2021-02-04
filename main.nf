@@ -144,7 +144,7 @@ def returnFile(it) {
 }
 
 Channel.fromPath(REF)
-	.into { inputBloomMaker; inputNormalize; Ref2Consensus  }
+	.into { inputBloomMaker; inputNormalize; Ref2Consensus; Ref2BwaIdx  }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -213,7 +213,7 @@ process trim_reads {
 
         output:
 	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),file(left),file(right) into (inputBowtie, inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),file(left),file(right) into ( inputBwa, inputBowtieFilter, inputBioBloomHost )
         set file(html),file(json) into fastp_qc
 
         script:
@@ -224,8 +224,8 @@ process trim_reads {
 
         left = fastqR1.getBaseName() + "_trimmed.fastq.gz"
         right = fastqR2.getBaseName() + "_trimmed.fastq.gz"
-        json = fastqR1.getBaseName() + ".fastp.json"
-        html = fastqR1.getBaseName() + ".fastp.html"
+        json = sampleID + ".fastp.json"
+        html = sampleID + ".fastp.html"
 
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right $options -f $params.clip -t $params.clip --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
@@ -593,27 +593,55 @@ if (params.pathoscope) {
 } // end pathoscope
 
 // **************************
-// align reads against reference genome
+// RKI-compliant: align reads against reference genome
 // **************************
-process align_viral_reads {
 
-       	label 'std'
+process align_make_index_bwa {
 
-	publishDir "${OUTDIR}/${sampleID}/BAM/raw", mode: 'copy'
+	label 'std'
+
+	publishDir "${OUTDIR}/Reference/BWA", mode: 'copy'
 
 	input:
-	set val(patientID),val(sampleID),file(left),file(right) from inputBowtie
+	file(fasta) from Ref2BwaIdx
 
 	output:
-	set val(patientID),val(sampleID),file(bam),file(bai) into bowtieBam
+	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) into BwaIndex
 
 	script:
-	ref_name = REF_WITH_HOST.getBaseName()
-	bam = sampleID + "." + ref_name + ".aligned.bam"
-	bai = bam + ".bai"
+	base_name = fasta.getName()
+	bwa_amb = base_name + ".amb"
+	bwa_ann = base_name + ".ann"
+	bwa_btw = base_name + ".bwt"
+	bwa_pac = base_name + ".pac"
+	bwa_sa = base_name + ".sa"
+	
+	"""
+		bwa index $fasta
+	"""
+}
+
+process align_viral_reads_bwa {
+
+	label 'std'
+
+	input:
+	set val(patientID),val(sampleID),file(left),file(right) from inputBwa
+	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) from BwaIndex.collect()
+
+	output:
+	set val(patientID),val(sampleID),file(bam),file(bai) into bwaBam
+
+	script:
+	ref_name = fasta.getBaseName()
+        bam = sampleID + "." + ref_name + ".aligned.bam"
+        bai = bam + ".bai"	
 
 	"""
-		bowtie2 --rg-id ${sampleID} --rg PL:Illumina --rg SM:${sampleID} --rg CN:CCGA -x $REF_WITH_HOST -p ${task.cpus} --no-unal --sensitive -1 $left -2 $right | samtools sort - | samtools view -bh -o $bam - 
+		samtools dict -a $ref_name -o assembly.dict -s Sars-CoV2 $fasta
+		bwa mem -H assembly.dict -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
+                        -t ${task.cpus} ${fasta} $left $right \
+                        | samtools sort -O bam -o $bam -
 		samtools index $bam
 	"""
 }
@@ -628,7 +656,7 @@ process mark_dups {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(bam),file(bai) from bowtieBam
+	set val(patientID),val(id),file(bam),file(bai) from bwaBam
 
 	output:
 	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage, bam2mask)
@@ -642,7 +670,8 @@ process mark_dups {
 
 	"""
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
-		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - $bam_md
+		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - tmp.md.bam
+		samtools rmdup tmp.md.bam $bam_md
 		samtools index $bam_md
 
 		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
@@ -726,7 +755,13 @@ process call_variants {
 	vcf = base_name + ".vcf"
 
 	"""
-		freebayes ${params.freebayes_options} -f $REF_WITH_HOST $bam > $vcf
+		freebayes --genotype-qualities \
+			--min-coverage $params.var_call_cov \
+			--haplotype-length -1 \
+			--min-alternate-fraction $params.var_call_frac \
+			--min-alternate-count $params.var_call_count \
+			--pooled-continuous \
+			-f $REF_WITH_HOST $bam > $vcf
 	"""
 
 }
@@ -750,7 +785,7 @@ process filter_vcf {
 	vcf_filtered = vcf.getBaseName() + ".filtered.vcf"
 
 	"""
-		bcftools filter ${params.filter_options} $vcf > $vcf_filtered
+		bcftools filter -e 'INFO/MQM < ${params.var_filter_mqm} | INFO/SAP > ${params.var_filter_sap} | QUAL < ${params.var_filter_qual}'  $vcf > $vcf_filtered
 	"""
 }
 
@@ -775,7 +810,9 @@ process normalize_vcf {
 	vcf_filtered_tbi = vcf_filtered_gz + ".tbi"
 
 	"""
-		vt normalize -o $vcf_filtered -r $ref_genome $vcf
+		vt normalize -o tmp.vcf -r $ref_genome $vcf
+
+		adjust_gt_rki.py -o $vcf_filtered --vf $params.cns_gt_adjust $vcf
 
 		bgzip -c $vcf_filtered > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
@@ -783,7 +820,6 @@ process normalize_vcf {
 	"""
 
 }
-
 
 // *************************
 // Make consensus assembly
@@ -809,7 +845,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.min_cov}' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.var_call_cov}' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 
@@ -854,7 +890,7 @@ process consensus_header {
 	set val(patientID),val(id),file(consensus) from Consensus2Header
 
 	output:
-	set val(patientID),val(id),file(consensus_reheader) into assemblies_pangolin
+	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc)
 	file(consensus_masked_reheader)
 
 	script:
@@ -877,6 +913,26 @@ process consensus_header {
 		echo >> $consensus_masked_reheader
 	"""
 
+}
+
+process consensus_qc {
+
+	label 'gaas'
+
+	publishDir "${OUTDIR}/${id}/QC", mode: 'copy'
+
+	input:
+	set val(patientID),val(id),file(consensus_reheader)  from consensus2qc
+
+	output:
+	set val(patientID),val(id),file(stats) into ConsensusStats
+
+	script:
+	stats = id + "_assembly_report.txt"
+
+	"""
+		gaas_fasta_statistics.pl -f $consensus_reheader -o stats > $stats
+	"""
 }
 
 // **********************
@@ -974,7 +1030,7 @@ process effect_prediction {
 // Write a per-patient report
 // **********************
 
-GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(Quast2Report,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
+GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(ConsensusStats,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
 
 
 process final_report {
@@ -984,7 +1040,7 @@ process final_report {
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(quast),file(variants),file(coverage_plot),file(mosdepth) from GroupedReports
+	set val(patientID),val(id),file(kraken),file(pangolin),file(samtools),file(fasta_qc),file(variants),file(coverage_plot),file(mosdepth) from GroupedReports
 	file(version_yaml) from software_versions_report
 
 	output:
@@ -998,7 +1054,7 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $quast --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
+		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $fasta_qc --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
 	"""
 
 }

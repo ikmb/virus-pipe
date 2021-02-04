@@ -54,6 +54,24 @@ Defines which set of PCR primers was used if this is sequenced from amplicons us
 ### `--primer_fasta` (default: false)
 Provide a set of primer sequences in FASTA format (overrides --primer_set option)
 
+### `--var_call_cov` (default: 10)
+Minimum coverage at a site required for analysis
+
+### `--var_call_count` (default: 10)
+Minimum number of reads required to support a SNP call
+
+### `---var_call_frac` (default: 0.1)
+Minimum fraction of reads required to call a SNP
+
+### `--var_filter_mqm` (default: 40)
+Minimum mean mapping quality required for a variant to pass
+
+### `--var_filter_sap` (default: 800)
+Maximum strand bias probability to include a variant call (note: this value may not be useful with amplicon data - hence the high default!)
+
+### `--var_filer_qual` (default: 10)
+Mimum call quality to include a variant
+
 ### `--assemble` (default: true)
 Assemble the reads using Spades. This option is always on by default.
 
