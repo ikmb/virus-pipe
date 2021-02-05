@@ -15,13 +15,19 @@ Required parameters:
 Optional parameters:
 --primer_set			Name of the primer set used (ARTIC-v3, Eden)
 --clip				Remove x bases from both ends of the reads (default: 6)
+--var_call_cov			Coverage of a site to be considered in variant calling (default: 20)
+--var_call_frac			Fraction of reads required to support a variant call (default: 0.1)
+--var_call_count		Number of reads required to support a variant call (default: 10)
+--var_filter_mqm		Mean mapping quality for a variant to survive filtering (default: 40)
+--var_filter_qual		Call quality for variant to survive filtering (default: 20)
+--var_filter_sap		Read strand bias for variant to survive filtering (default: 100)
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
+--primers                       Primers used for amplification of genome fragments (default: Eden)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --assemble			Assemble genomes de-novo
 --guided 			Guide assembly with known reference
 --email				Specify email to send report to
---primers			Primers used for amplification of genome fragments (default: Eden)
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -45,14 +51,14 @@ REF_NAME = "NC_045512.2"
 
 REF_WITH_HOST = file(params.ref_with_host)
 
+host_genome = Channel.fromPath("${params.host_index}*")
+
 // Minimum file size in bytes to attempt assembly from
 size_limit = params.size_limit
 
 /*
 Primer sequences
 */
-
-pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
 
 // Selection of amplicon primers
 if (params.primer_fasta) {
@@ -76,7 +82,6 @@ if (params.filter && params.fast_filter) {
 	log.info "Requested filter and fast_filter - will only use fast_filter..."
 	params.filter = false
 }
-host_genome = Channel.fromPath("${params.host_index}*")
 
 // set basic global options like location of database files
 BLOOMFILTER_HOST = params.bloomfilter_host
@@ -96,7 +101,6 @@ if (!params.run_name ) {
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
-summary['HostBloomFilter'] = params.bloomfilter_host
 summary['MappingReference'] = params.ref_with_host
 // Header log info
 log.info "IKMB ------------------------------------------------------------------------------"
@@ -144,7 +148,7 @@ def returnFile(it) {
 }
 
 Channel.fromPath(REF)
-	.into { inputBloomMaker; inputNormalize; Ref2Consensus; Ref2BwaIdx  }
+	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
 
 if (params.reads) {
 	Channel.fromFilePairs(params.reads, flat: true)
@@ -189,6 +193,7 @@ process get_software_versions {
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
 	    multiqc --version &> v_multiqc.txt
+	    bwa &> v_bwa.txt 2>&1 || true	    
 	    bowtie2 --version &> v_bowtie2.txt
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
@@ -261,62 +266,7 @@ process make_bloomfilter {
 // Filter reads against the human genome
 // *****************************
 
-if (params.fast_filter) {
-
-	// **********************
-	// Using Bloom filter
-	// **********************
-
-	process remove_host_reads_bloom {
-
-        	label 'std'
-
-		publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
-
-		input:
-		set val(patientID),val(id),file(left_reads),file(right_reads) from inputBioBloomHost
-
-		output:
-		set val(patientID),val(id),file(clean_reads) into inputReformat
-		file(bloom) into BloomReportHost
-
-		script:
-		analysis = id + ".Host" 
-		bloom = analysis + "_summary.tsv"
-		clean_reads = analysis + ".filtered.fastq.gz"
-
-		"""
-			biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
-		"""
-
-	}
-
-	// *************************
-	// Take the interlaved non-host reads and produce sane PE data 
-	// *************************
-	process deinterleave_reads {
-
-		label 'std'
-
-	        publishDir "${OUTDIR}/${id}//CleanReads", mode: 'copy'
-
-        	input:
-	        set val(patientID),val(id),file(reads) from inputReformat
-
-        	output:
-	        set val(patientID),val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed )
-
-        	script:
-	        left = id + "_R1_001.bloom_non_host.fastq.gz"
-        	right = id + "_R2_001.bloom_non_host.fastq.gz"
-	
-        	"""
-	                reformat.sh in=$reads out1=$left out2=$right addslash int
-        	"""
-
-	}
-
-} else if (params.filter) {
+if (params.filter) {
 
         // ****************
         // Using Bowtie2
@@ -593,7 +543,7 @@ if (params.pathoscope) {
 } // end pathoscope
 
 // **************************
-// RKI-compliant: align reads against reference genome
+// RKI-compliant: align reads against reference genome and flip variant bases
 // **************************
 
 process align_make_index_bwa {
@@ -746,6 +696,7 @@ process call_variants {
 
 	input:
 	set val(patientID),val(id),file(bam),file(bai) from bamMD
+	file(reference) from Ref2Freebayes
 
 	output:
 	set val(patientID),val(id),file(vcf) into fbVcf
@@ -761,7 +712,7 @@ process call_variants {
 			--min-alternate-fraction $params.var_call_frac \
 			--min-alternate-count $params.var_call_count \
 			--pooled-continuous \
-			-f $REF_WITH_HOST $bam > $vcf
+			-f $reference $bam > $vcf
 	"""
 
 }
@@ -880,6 +831,7 @@ process consensus_assembly {
 	"""
 }
 
+// Replace the fasta header to include sample name
 process consensus_header {
 
 	publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
@@ -907,7 +859,6 @@ process consensus_header {
 		echo  >> $consensus_reheader
 
 		echo '>$masked_header' > $consensus_masked_reheader
-
 		
 		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
 		echo >> $consensus_masked_reheader
@@ -915,6 +866,7 @@ process consensus_header {
 
 }
 
+// QC of the final IUPAC assembly
 process consensus_qc {
 
 	label 'gaas'
@@ -936,9 +888,8 @@ process consensus_qc {
 }
 
 // **********************
-// Determine lineage
+// Determine Pangolin lineage
 // **********************
-
 process assembly_pangolin {
 
         label 'pangolin'
@@ -960,6 +911,7 @@ process assembly_pangolin {
         """
 }
 
+// Convert Pangolin results to YAML format
 process pangolin2yaml {
 
         label 'std'
@@ -1031,7 +983,6 @@ process effect_prediction {
 // **********************
 
 GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(ConsensusStats,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
-
 
 process final_report {
 
