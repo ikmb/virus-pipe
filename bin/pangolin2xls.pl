@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
 use strict;
+use Cwd;
 use Getopt::Long;
 use Excel::Writer::XLSX;
 
@@ -37,6 +38,8 @@ if ($outfile) {
 
 die "Must specify an outfile (--outfile)" unless (defined $outfile);
 
+my $dir = getcwd;
+
 # Initiate the XLS workbook
 my $workbook = Excel::Writer::XLSX->new($outfile);
 
@@ -45,8 +48,9 @@ my $worksheet = $workbook->add_worksheet();
 
 my $row = 0;
 
-my $fh = IO::File->new();
-$fh->open( $infile );
+my @h = ( "K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
+&write_xlsx($worksheet, $row, @h);
+++$row;
 
 foreach my $file (glob("$dir/*.csv")) {
 
@@ -69,7 +73,7 @@ foreach my $file (glob("$dir/*.csv")) {
 
                 next unless ($status eq "passed_qc");
 
-                my @ele = ( $lib, $lineage, $prob );
+                my @ele = ( $lib, $lineage, "" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
         }

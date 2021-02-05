@@ -84,9 +84,6 @@ Run the Pathoscope pipeline to check for other metagenomic signals in the data.
 ### `--filter` (default: true)
 If this option is set, the trimmed reads will be mapped and filtered against the human genome using Bowtie2 prior to taxonomic assignment.
 
-### `--fast_filter` (default: false)
-Use a rapid bloom filter to remove host reads. This is significantly faster than an exhaustive alignment (--filter), but is less tested. Use only when processing high sample numbers and/or very deep samples. 
-
 ## Expert options (safe to ignore!)
 
 The below settings are typically set in a site-specific config file and not manipulated from the command line. 

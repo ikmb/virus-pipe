@@ -22,7 +22,6 @@ Optional parameters:
 --var_filter_qual		Call quality for variant to survive filtering (default: 20)
 --var_filter_sap		Read strand bias for variant to survive filtering (default: 100)
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
---primers                       Primers used for amplification of genome fragments (default: Eden)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
 --assemble			Assemble genomes de-novo
@@ -84,8 +83,6 @@ if (params.filter && params.fast_filter) {
 }
 
 // set basic global options like location of database files
-BLOOMFILTER_HOST = params.bloomfilter_host
-
 KRAKEN2_DB = params.kraken2_db
 
 PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
@@ -115,14 +112,13 @@ log.info "${workflow.manifest.description}		v${params.version}"
 log.info "Nextflow Version:             	$workflow.nextflow.version"
 log.info "Mapping reference:		${params.ref_with_host}"
 log.info "Viral reference:             	${REF}"
-log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
 if (params.assemble) {
 	log.info "Assemble guided:		${params.guided}"
 }
-if (params.primers) {
-	log.info "Primers for trimming:		${primers}"
+if (params.primer_fasta) {
+	log.info "Primers for trimming:		${params.primer_fasta}"
 } else if (params.primer_set) {
 	log.info "Primers for trimming:		${params.primer_set}"
 } else {
@@ -168,11 +164,32 @@ if (params.reads) {
        .set {  reads_fastp }
 }
 
+process get_pangolin_version {
+
+	executor 'local'
+
+	label 'pangolin'
+
+	output:
+	file(pangolin_version) into pango_version
+
+	script:
+	pangolin_version = "v_pangolin.txt"
+
+	"""
+		pangolin -v > $pangolin_version
+	"""
+
+}
+
 process get_software_versions {
 
     label 'std'
 
     publishDir "${OUTDIR}/Summary/versions", mode: 'copy'
+
+    input:
+    file(pangolin_version) from pango_version
 
     output:
     file("v*.txt")
@@ -187,7 +204,6 @@ process get_software_versions {
 	    echo $workflow.manifest.version &> v_ikmb_virus_pipe.txt
 	    echo $workflow.nextflow.version &> v_nextflow.txt
 	    echo "Kraken2 2.0.8_beta" > v_kraken2.txt
-	    echo "Pangolin 2.1.7" > v_pangolin.txt
 	    freebayes --version &> v_freebayes.txt
 	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
@@ -609,8 +625,8 @@ process mark_dups {
 	set val(patientID),val(id),file(bam),file(bai) from bwaBam
 
 	output:
-	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage, bam2mask)
-	set val(patientID),val(id),file(bam_md),file(bai_md) into HostBam
+	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( inputBamStats, inputBamCoverage, bam2mask)
+	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into bamMD
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -696,7 +712,7 @@ process call_variants {
 
 	input:
 	set val(patientID),val(id),file(bam),file(bai) from bamMD
-	file(reference) from Ref2Freebayes
+	file(reference) from Ref2Freebayes.collect()
 
 	output:
 	set val(patientID),val(id),file(vcf) into fbVcf
@@ -796,7 +812,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.var_call_cov}' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.cns_min_cov}' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 
@@ -923,13 +939,16 @@ process pangolin2yaml {
 
         output:
         file(report) into PangolinYaml
+	file(xls)
 
         script:
 
         report = "pangolin_report_mqc.yaml"
+	xls = "pangolin." + run_name + ".xlsx"
 
         """
                 pangolin2yaml.pl > $report
+		pangolin2xls.pl --outfile $xls
         """
 
 }

@@ -23,11 +23,12 @@ Software used:
 
 FastP v0.20.0 (https://github.com/OpenGene/fastp)
 BioBloom v2.3.1 (https://github.com/bcgsc/biobloom/)
+Bwa 0.7.17 (https://github.com/lh3/bwa)
 Bowtie2 v2.3.5.1 (https://github.com/BenLangmead/bowtie2)
 Samtools v1.10 (http://www.htslib.org/doc/samtools.html)
 Bcftools v1.10 (http://www.htslib.org/doc/bcftools.html)
 HTSlib v1.10 (http://www.htslib.org)
 MoSDepth v0.2.9 (https://github.com/brentp/mosdepth)
 Freebayes v1.3.2 (https://github.com/freebayes/freebayes)
-Pangolin v2.1.7  (https://github.com/cov-lineages/pangolin)
+Pangolin v2.1.10  (https://github.com/cov-lineages/pangolin)
 
