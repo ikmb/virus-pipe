@@ -10,18 +10,24 @@ IKMB Virus pipeline | version ${params.version}
 Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
---reads                        Input reads as a set of one or more PE Illumina reads
---email                        Email address to send reports to (enclosed in '')
+--reads                         Input reads as a set of one or more PE Illumina reads (or:...)
+--samples			Sample sheet with additional sample information (instead of --reads). See github for formatting hints.
+--email                         Email address to send reports to (enclosed in '')
 Optional parameters:
 --primer_set			Name of the primer set used (ARTIC-v3, Eden)
 --clip				Remove x bases from both ends of the reads (default: 6)
+--var_call_cov			Coverage of a site to be considered in variant calling (default: 20)
+--var_call_frac			Fraction of reads required to support a variant call (default: 0.1)
+--var_call_count		Number of reads required to support a variant call (default: 10)
+--var_filter_mqm		Mean mapping quality for a variant to survive filtering (default: 40)
+--var_filter_qual		Call quality for variant to survive filtering (default: 20)
+--var_filter_sap		Read strand bias for variant to survive filtering (default: 100)
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
---assemble			Assemble genomes de-novo
+--assemble			Assemble genomes de-novo (in addition to the ref-flipping way)
 --guided 			Guide assembly with known reference
 --email				Specify email to send report to
---primers			Primers used for amplification of genome fragments (default: Eden)
 Output:
 --outdir                       Local directory to which all output is written (default: results)
 """
@@ -45,14 +51,14 @@ REF_NAME = "NC_045512.2"
 
 REF_WITH_HOST = file(params.ref_with_host)
 
+host_genome = Channel.fromPath("${params.host_index}*")
+
 // Minimum file size in bytes to attempt assembly from
 size_limit = params.size_limit
 
 /*
 Primer sequences
 */
-
-pb_barcodes = file("${baseDir}/assets/pacbio/Sequel_16_Barcodes_v3.fasta")
 
 // Selection of amplicon primers
 if (params.primer_fasta) {
@@ -76,11 +82,8 @@ if (params.filter && params.fast_filter) {
 	log.info "Requested filter and fast_filter - will only use fast_filter..."
 	params.filter = false
 }
-host_genome = Channel.fromPath("${params.host_index}*")
 
 // set basic global options like location of database files
-BLOOMFILTER_HOST = params.bloomfilter_host
-
 KRAKEN2_DB = params.kraken2_db
 
 PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
@@ -93,11 +96,25 @@ if (!params.run_name ) {
         log.info "No run name was specified, using ${run_name} instead"
 }
 
+if (params.samples && params.reads) {
+	log.info "Specified both --reads and --samples! Will only consider --samples"
+}
+
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
-summary['HostBloomFilter'] = params.bloomfilter_host
 summary['MappingReference'] = params.ref_with_host
+summary['VariantCalling'] = [:]
+
+summary['VariantCalling']['VarCallCov'] = params.var_call_cov
+summary['VariantCalling']['VarCallFrac'] = params.var_call_frac
+summary['VariantCalling']['VarCallCount'] = params.var_call_count
+summary['VariantCalling']['VarFilterMqm'] = params.var_filter_mqm
+summary['VariantCalling']['VarFilterSap'] = params.var_filter_sap
+summary['VariantCalling']['VarFilterQual'] = params.var_filter_qual
+summary['VariantCalling']['ConsensusMinCov'] = params.cns_min_cov
+summary['VariantCalling']['ConsensusGtAdjust'] = params.cns_gt_adjust
+
 // Header log info
 log.info "IKMB ------------------------------------------------------------------------------"
 log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d8888b. d88888b "
@@ -111,14 +128,13 @@ log.info "${workflow.manifest.description}		v${params.version}"
 log.info "Nextflow Version:             	$workflow.nextflow.version"
 log.info "Mapping reference:		${params.ref_with_host}"
 log.info "Viral reference:             	${REF}"
-log.info "Host DB:			${params.bloomfilter_host}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
 if (params.assemble) {
 	log.info "Assemble guided:		${params.guided}"
 }
-if (params.primers) {
-	log.info "Primers for trimming:		${primers}"
+if (params.primer_fasta) {
+	log.info "Primers for trimming:		${params.primer_fasta}"
 } else if (params.primer_set) {
 	log.info "Primers for trimming:		${params.primer_set}"
 } else {
@@ -131,11 +147,11 @@ if (workflow.containerEngine) {
 }
 log.info "==================================================================================="
 
-
 // ********************
 // WORKFLOW STARTS HERE
 // ********************
 
+// Helper function for the sample sheet parsing to produce sane channel elements
 def returnFile(it) {
     // Return file if it exists
     inputFile = file(it)
@@ -144,14 +160,9 @@ def returnFile(it) {
 }
 
 Channel.fromPath(REF)
-	.into { inputBloomMaker; inputNormalize; Ref2Consensus; Ref2BwaIdx  }
+	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
 
-if (params.reads) {
-	Channel.fromFilePairs(params.reads, flat: true)
-	.map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
-	.set { reads_fastp }
-} else if (params.samples) {
-
+if (params.samples) {
 	Channel.from(file(params.samples))
         .splitCsv(sep: ';', header: true)
 	.map { row ->
@@ -162,6 +173,27 @@ if (params.reads) {
                         [ patient, sample, left, right ]
                 }
        .set {  reads_fastp }
+} else if (params.reads) {
+        Channel.fromFilePairs(params.reads, flat: true)
+        .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
+        .set { reads_fastp }
+}
+
+process get_pangolin_version {
+
+	executor 'local'
+
+	label 'pangolin'
+
+	output:
+	file(pangolin_version) into pango_version
+
+	script:
+	pangolin_version = "v_pangolin.txt"
+
+	"""
+		pangolin -v > $pangolin_version
+	"""
 }
 
 process get_software_versions {
@@ -169,6 +201,9 @@ process get_software_versions {
     label 'std'
 
     publishDir "${OUTDIR}/Summary/versions", mode: 'copy'
+
+    input:
+    file(pangolin_version) from pango_version
 
     output:
     file("v*.txt")
@@ -183,21 +218,17 @@ process get_software_versions {
 	    echo $workflow.manifest.version &> v_ikmb_virus_pipe.txt
 	    echo $workflow.nextflow.version &> v_nextflow.txt
 	    echo "Kraken2 2.0.8_beta" > v_kraken2.txt
-	    echo "Pangolin 2.1.7" > v_pangolin.txt
 	    freebayes --version &> v_freebayes.txt
 	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
 	    multiqc --version &> v_multiqc.txt
+	    bwa &> v_bwa.txt 2>&1 || true	    
 	    bowtie2 --version &> v_bowtie2.txt
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
     """
 }
-
-// **********************
-// ILLUMINA WORKFLOW
-// **********************
 
 process trim_reads {
 
@@ -233,6 +264,7 @@ process trim_reads {
 	
 }
 
+// Get the fraction of Sars-CoV2 reads against this bloom filter
 process make_bloomfilter {
 
 	label 'std'
@@ -261,62 +293,7 @@ process make_bloomfilter {
 // Filter reads against the human genome
 // *****************************
 
-if (params.fast_filter) {
-
-	// **********************
-	// Using Bloom filter
-	// **********************
-
-	process remove_host_reads_bloom {
-
-        	label 'std'
-
-		publishDir "${OUTDIR}/${id}/Bloomfilter/Host", mode: 'copy'
-
-		input:
-		set val(patientID),val(id),file(left_reads),file(right_reads) from inputBioBloomHost
-
-		output:
-		set val(patientID),val(id),file(clean_reads) into inputReformat
-		file(bloom) into BloomReportHost
-
-		script:
-		analysis = id + ".Host" 
-		bloom = analysis + "_summary.tsv"
-		clean_reads = analysis + ".filtered.fastq.gz"
-
-		"""
-			biobloomcategorizer -p $analysis --gz_output -d -n -e -s 0.01 -t ${task.cpus} -f "$BLOOMFILTER_HOST" $left_reads $right_reads | gzip > $clean_reads
-		"""
-
-	}
-
-	// *************************
-	// Take the interlaved non-host reads and produce sane PE data 
-	// *************************
-	process deinterleave_reads {
-
-		label 'std'
-
-	        publishDir "${OUTDIR}/${id}//CleanReads", mode: 'copy'
-
-        	input:
-	        set val(patientID),val(id),file(reads) from inputReformat
-
-        	output:
-	        set val(patientID),val(id),file(left),file(right) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed )
-
-        	script:
-	        left = id + "_R1_001.bloom_non_host.fastq.gz"
-        	right = id + "_R2_001.bloom_non_host.fastq.gz"
-	
-        	"""
-	                reformat.sh in=$reads out1=$left out2=$right addslash int
-        	"""
-
-	}
-
-} else if (params.filter) {
+if (params.filter) {
 
         // ****************
         // Using Bowtie2
@@ -593,7 +570,7 @@ if (params.pathoscope) {
 } // end pathoscope
 
 // **************************
-// RKI-compliant: align reads against reference genome
+// RKI-compliant: align reads against reference genome and flip variant bases
 // **************************
 
 process align_make_index_bwa {
@@ -659,8 +636,8 @@ process mark_dups {
 	set val(patientID),val(id),file(bam),file(bai) from bwaBam
 
 	output:
-	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( bamMD, inputBamStats, inputBamCoverage, bam2mask)
-	set val(patientID),val(id),file(bam_md),file(bai_md) into HostBam
+	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( inputBamStats, inputBamCoverage, bam2mask)
+	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into bamMD
 
 	script:
 	bam_md = id + ".dedup.bam"
@@ -746,6 +723,7 @@ process call_variants {
 
 	input:
 	set val(patientID),val(id),file(bam),file(bai) from bamMD
+	file(reference) from Ref2Freebayes.collect()
 
 	output:
 	set val(patientID),val(id),file(vcf) into fbVcf
@@ -761,7 +739,7 @@ process call_variants {
 			--min-alternate-fraction $params.var_call_frac \
 			--min-alternate-count $params.var_call_count \
 			--pooled-continuous \
-			-f $REF_WITH_HOST $bam > $vcf
+			-f $reference $bam > $vcf
 	"""
 
 }
@@ -845,7 +823,7 @@ process create_cov_mask {
 
 	"""
 
-		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.var_call_cov}' | bedtools merge > tmp.bed
+		bedtools genomecov -bga -ibam $bam | awk '\$4 < ${params.cns_min_cov}' | bedtools merge > tmp.bed
 		bedtools intersect -v -a tmp.bed -b $vcf > $mask
 	"""
 
@@ -880,6 +858,7 @@ process consensus_assembly {
 	"""
 }
 
+// Replace the fasta header to include sample name
 process consensus_header {
 
 	publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
@@ -907,7 +886,6 @@ process consensus_header {
 		echo  >> $consensus_reheader
 
 		echo '>$masked_header' > $consensus_masked_reheader
-
 		
 		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
 		echo >> $consensus_masked_reheader
@@ -915,6 +893,7 @@ process consensus_header {
 
 }
 
+// QC of the final IUPAC assembly
 process consensus_qc {
 
 	label 'gaas'
@@ -936,9 +915,8 @@ process consensus_qc {
 }
 
 // **********************
-// Determine lineage
+// Determine Pangolin lineage
 // **********************
-
 process assembly_pangolin {
 
         label 'pangolin'
@@ -960,6 +938,7 @@ process assembly_pangolin {
         """
 }
 
+// Convert Pangolin results to YAML format
 process pangolin2yaml {
 
         label 'std'
@@ -971,13 +950,16 @@ process pangolin2yaml {
 
         output:
         file(report) into PangolinYaml
+	file(xls)
 
         script:
 
         report = "pangolin_report_mqc.yaml"
+	xls = "pangolin." + run_name + ".xlsx"
 
         """
                 pangolin2yaml.pl > $report
+		pangolin2xls.pl --outfile $xls
         """
 
 }
@@ -1032,7 +1014,6 @@ process effect_prediction {
 
 GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Report,by: [0,1]).join(ConsensusStats,by: [0,1]).join(EffectPrediction,by: [0,1]).join(coverage_report,by: [0,1])
 
-
 process final_report {
 
 	label 'std'
@@ -1078,7 +1059,6 @@ process MultiQC {
 	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
 	file('*') from software_versions_yaml.collect()
-	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
 	file(report) into multiqc_report
