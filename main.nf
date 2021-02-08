@@ -10,8 +10,9 @@ IKMB Virus pipeline | version ${params.version}
 Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
---reads                        Input reads as a set of one or more PE Illumina reads
---email                        Email address to send reports to (enclosed in '')
+--reads                         Input reads as a set of one or more PE Illumina reads (or:...)
+--samples			Sample sheet with additional sample information (instead of --reads). See github for formatting hints.
+--email                         Email address to send reports to (enclosed in '')
 Optional parameters:
 --primer_set			Name of the primer set used (ARTIC-v3, Eden)
 --clip				Remove x bases from both ends of the reads (default: 6)
@@ -24,7 +25,7 @@ Optional parameters:
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
---assemble			Assemble genomes de-novo
+--assemble			Assemble genomes de-novo (in addition to the ref-flipping way)
 --guided 			Guide assembly with known reference
 --email				Specify email to send report to
 Output:
@@ -95,10 +96,25 @@ if (!params.run_name ) {
         log.info "No run name was specified, using ${run_name} instead"
 }
 
+if (params.samples && params.reads) {
+	log.info "Specified both --reads and --samples! Will only consider --samples"
+}
+
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
 summary['MappingReference'] = params.ref_with_host
+summary['VariantCalling'] = [:]
+
+summary['VariantCalling']['VarCallCov'] = params.var_call_cov
+summary['VariantCalling']['VarCallFrac'] = params.var_call_frac
+summary['VariantCalling']['VarCallCount'] = params.var_call_count
+summary['VariantCalling']['VarFilterMqm'] = params.var_filter_mqm
+summary['VariantCalling']['VarFilterSap'] = params.var_filter_sap
+summary['VariantCalling']['VarFilterQual'] = params.var_filter_qual
+summary['VariantCalling']['ConsensusMinCov'] = params.cns_min_cov
+summary['VariantCalling']['ConsensusGtAdjust'] = params.cns_gt_adjust
+
 // Header log info
 log.info "IKMB ------------------------------------------------------------------------------"
 log.info "db    db d888888b d8888b. db    db .d8888.        d8888b. d888888b d8888b. d88888b "
@@ -131,11 +147,11 @@ if (workflow.containerEngine) {
 }
 log.info "==================================================================================="
 
-
 // ********************
 // WORKFLOW STARTS HERE
 // ********************
 
+// Helper function for the sample sheet parsing to produce sane channel elements
 def returnFile(it) {
     // Return file if it exists
     inputFile = file(it)
@@ -146,12 +162,7 @@ def returnFile(it) {
 Channel.fromPath(REF)
 	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
 
-if (params.reads) {
-	Channel.fromFilePairs(params.reads, flat: true)
-	.map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
-	.set { reads_fastp }
-} else if (params.samples) {
-
+if (params.samples) {
 	Channel.from(file(params.samples))
         .splitCsv(sep: ';', header: true)
 	.map { row ->
@@ -162,6 +173,10 @@ if (params.reads) {
                         [ patient, sample, left, right ]
                 }
        .set {  reads_fastp }
+} else if (params.reads) {
+        Channel.fromFilePairs(params.reads, flat: true)
+        .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
+        .set { reads_fastp }
 }
 
 process get_pangolin_version {
@@ -179,7 +194,6 @@ process get_pangolin_version {
 	"""
 		pangolin -v > $pangolin_version
 	"""
-
 }
 
 process get_software_versions {
@@ -216,10 +230,6 @@ process get_software_versions {
     """
 }
 
-// **********************
-// ILLUMINA WORKFLOW
-// **********************
-
 process trim_reads {
 
 	label 'fastp'
@@ -254,6 +264,7 @@ process trim_reads {
 	
 }
 
+// Get the fraction of Sars-CoV2 reads against this bloom filter
 process make_bloomfilter {
 
 	label 'std'
@@ -1048,7 +1059,6 @@ process MultiQC {
 	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
 	file('*') from software_versions_yaml.collect()
-	//file('*') from BloomReportHost.collect().ifEmpty('')
 
 	output:
 	file(report) into multiqc_report
