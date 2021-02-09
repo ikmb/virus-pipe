@@ -26,7 +26,7 @@ For more details on available options, see below.
 Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Must be enclosed in single-quotes.
 
 ### `--samples`
-Path to a CSV formatted sample sheet as an alterantive to --reads. Expects the following columns:
+Path to a CSV formatted sample sheet as an alternative to --reads. Expects the following columns:
 
 ```
 IndivID;SampleID;R1;R2
@@ -45,7 +45,7 @@ You can edit this file to replace the library-derived labels for IndivID and/or 
 ### `--run_name`
 Provide a usefull name to this analysis run (could be the LIMS project ID)
 
-### `--clip` (default: 6)
+### `--clip` (default: 20)
 Remove n bases from both 3' and 5' of each read to account for fragmented amplicon primers that cannot be detected otherwise.
 
 ### `--primer_set` (default: ARTIC-v3)
@@ -66,16 +66,16 @@ Minimum fraction of reads required to call a SNP
 ### `--var_filter_mqm` (default: 40)
 Minimum mean mapping quality required for a variant to pass
 
-### `--var_filter_sap` (default: 800)
+### `--var_filter_sap` (default: 2000)
 Maximum strand bias probability to include a variant call (note: this value may not be useful with amplicon data - hence the high default!)
 
 ### `--var_filer_qual` (default: 10)
 Mimum call quality to include a variant
 
-### `--assemble` (default: true)
+### `--assemble` (default: false)
 Assemble the reads using Spades. This option is always on by default.
 
-### `--guided` (default: true)
+### `--guided` (default: false)
 Use the built-in Covid19 reference to guide assembly (this will likely inflate assembly metrics). This option is always on by default. 
 
 ### `--taxonomy` (default: false)
