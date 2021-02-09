@@ -32,9 +32,9 @@ if ($help) {
     exit(0);
 }
 
-if ($outfile) {
-    open(STDOUT, ">$outfile") or die("Cannot open $outfile");
-}
+#if ($outfile) {
+#    open(STDOUT, ">$outfile") or die("Cannot open $outfile");
+#}
 
 die "Must specify an outfile (--outfile)" unless (defined $outfile);
 
@@ -47,8 +47,11 @@ my $workbook = Excel::Writer::XLSX->new($outfile);
 my $worksheet = $workbook->add_worksheet();
 
 my $row = 0;
+my @bucket;
 
 my @h = ( "K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
+push(@bucket, "K-Nummer;Pangolin-Typisierung;TechnischeValidierung");
+
 &write_xlsx($worksheet, $row, @h);
 ++$row;
 
@@ -76,12 +79,19 @@ foreach my $file (glob("$dir/*.csv")) {
                 my @ele = ( $lib, $lineage, "" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
+		my $entry = $lib . ";" . $lineage . ";" ;
+		push(@bucket, $entry);
         }
 
         close($fh);
 
 }
 
+$workbook->close();
+
+foreach my $b (@bucket) {
+	printf $b . "\n";
+}
 sub write_xlsx{
     my ($worksheet, $tem_row, @ele) = @_;
     for(my $i = 0; $i < @ele; ++$i){
