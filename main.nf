@@ -103,7 +103,7 @@ if (params.samples && params.reads) {
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
 summary['PathoscopeDB'] = params.pathoscope_index_dir
-summary['MappingReference'] = params.ref_with_host
+summary['MappingReference'] = REF
 summary['VariantCalling'] = [:]
 
 summary['VariantCalling']['VarCallCov'] = params.var_call_cov
@@ -951,15 +951,17 @@ process pangolin2yaml {
         output:
         file(report) into PangolinYaml
 	file(xls)
+	file(csv)
 
         script:
 
         report = "pangolin_report_mqc.yaml"
 	xls = "pangolin." + run_name + ".xlsx"
+	csv = "pangolin." + run_name + ".csv"
 
         """
                 pangolin2yaml.pl > $report
-		pangolin2xls.pl --outfile $xls
+		pangolin2xls.pl --outfile $xls > $csv
         """
 
 }
