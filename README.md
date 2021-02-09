@@ -2,7 +2,7 @@
 
 # IKMB virus-pipe
 
-Pipeline to assembly, map and variant call a Sars-CoV2 samples
+Pipeline to map and variant call a Sars-CoV2 sample and create a consensus assembly for lineage typing. Optionally, a de-novo assembly can be performed. 
 
 
 ## Documentation

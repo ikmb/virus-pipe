@@ -100,7 +100,8 @@ chomp(my @lines = <$IN>);
 foreach my $line (@lines) {
 
         chomp($line);
-
+	
+	# Get the fraction of the genome covered at 20X
 	if ($line =~ /^total	20	.*/) {
 		my ($t,$c,$target_coverage) = split(/\t/,$line);
 		$target_cov = $target_coverage*100;

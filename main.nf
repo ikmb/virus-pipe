@@ -14,14 +14,14 @@ Required parameters:
 --samples			Sample sheet with additional sample information (instead of --reads). See github for formatting hints.
 --email                         Email address to send reports to (enclosed in '')
 Optional parameters:
---primer_set			Name of the primer set used (ARTIC-v3, Eden)
---clip				Remove x bases from both ends of the reads (default: 6)
+--clip				Remove x bases from both ends of the reads (default: 20)
 --var_call_cov			Coverage of a site to be considered in variant calling (default: 20)
 --var_call_frac			Fraction of reads required to support a variant call (default: 0.1)
 --var_call_count		Number of reads required to support a variant call (default: 10)
 --var_filter_mqm		Mean mapping quality for a variant to survive filtering (default: 40)
 --var_filter_qual		Call quality for variant to survive filtering (default: 20)
 --var_filter_sap		Read strand bias for variant to survive filtering (default: 100)
+--primer_set                    Name of the primer set used (ARTIC-v3, Eden)
 --primer_fasta			Primer sequences in FASTA format (overrides --primer_set)
 --run_name			Specify a name for this analysis run
 --kraken2_db			A kraken2-formatted database with virus species for taxonomic mapping
@@ -767,7 +767,7 @@ process filter_vcf {
 	"""
 }
 
-process normalize_vcf {
+process normalize_and_adjust_vcf {
 
         publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
