@@ -73,11 +73,6 @@ if (params.primer_fasta) {
 	primers = Channel.empty()
 }  
 
-if (params.guided && !params.assemble) {
-	log.info "Requested a guided assembly but did not actually enable assembly - will do that for you now!"
-	params.assemble = true
-}
-
 if (params.filter && params.fast_filter) {
 	log.info "Requested filter and fast_filter - will only use fast_filter..."
 	params.filter = false
@@ -161,6 +156,17 @@ def returnFile(it) {
 
 Channel.fromPath(REF)
 	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
+
+Channel.fromPath(REF_WITH_HOST)
+	.map { fa ->
+		def bwa_amb = returnFile(fa + ".amb")
+		def bwa_ann = returnFile(fa + ".ann")
+		def bwa_btw = returnFile(fa + ".bwt")
+		def bwa_pac = returnFile(fa + ".pac")
+		def bwa_sa = returnFile(fa + ".sa")
+		[ fa, bwa_amb, bwa_ann, bwa_btw, bwa_pac, bwa_sa ]
+	}
+	.set { HostIndexFiles }
 
 if (params.samples) {
 	Channel.from(file(params.samples))
@@ -573,29 +579,35 @@ if (params.pathoscope) {
 // RKI-compliant: align reads against reference genome and flip variant bases
 // **************************
 
-process align_make_index_bwa {
+if (params.with_host) {
 
-	label 'std'
+	BwaIndex = HostIndexFiles
 
-	publishDir "${OUTDIR}/Reference/BWA", mode: 'copy'
+} else {
+	process align_make_index_bwa {
 
-	input:
-	file(fasta) from Ref2BwaIdx
+		label 'std'
 
-	output:
-	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) into BwaIndex
+		publishDir "${OUTDIR}/Reference/BWA", mode: 'copy'
 
-	script:
-	base_name = fasta.getName()
-	bwa_amb = base_name + ".amb"
-	bwa_ann = base_name + ".ann"
-	bwa_btw = base_name + ".bwt"
-	bwa_pac = base_name + ".pac"
-	bwa_sa = base_name + ".sa"
+		input:
+		file(fasta) from Ref2BwaIdx
+
+		output:
+		set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) into BwaIndex
+
+		script:
+		base_name = fasta.getName()
+		bwa_amb = base_name + ".amb"
+		bwa_ann = base_name + ".ann"
+		bwa_btw = base_name + ".bwt"
+		bwa_pac = base_name + ".pac"
+		bwa_sa = base_name + ".sa"
 	
-	"""
-		bwa index $fasta
-	"""
+		"""
+			bwa index $fasta
+		"""
+	}
 }
 
 process align_viral_reads_bwa {
@@ -1090,6 +1102,7 @@ workflow.onComplete {
   email_fields['session'] = workflow.sessionId
   email_fields['runName'] = run_name
   email_fields['Reads'] = params.reads
+  email_fields['SampleSheet'] = params.samples
   email_fields['success'] = workflow.success
   email_fields['dateStarted'] = workflow.start
   email_fields['dateComplete'] = workflow.complete

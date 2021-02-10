@@ -414,16 +414,7 @@ $text->font($font,10);
 $text->translate(250,$step);
 $text->text("${global_lineage}");
 
-$step -= 20;
-$text->font($font,8);
-$text->translate(50,$step);
-$text->text("Pangolin typisiert SARS-Cov2 Genomdaten basierend auf vorab definierten genomischen Varianten");
-
-$step -= 10;
-$text->translate(50,$step);
-$text->text("https://github.com/cov-lineages/pangolin");
-
-$step -= 40;
+$step -= 30;
 $text->font($b_font,12);
 $text->translate(50,$step);
 $text->text("Metriken");
@@ -524,11 +515,8 @@ $pdftable->table(
 
 $text->font($font,8);
 
-$text->translate(50,90);
-$text->text("IKMB Virus-pipe Pipeline - version $pipeline_version. Weitere Details unter: https://github.com/ikmb/virus-pipe");
-
 $text->translate(50,75);
-$text->text("Software tools:");
+$text->text("IKMB pipeline version $pipeline_version - see: https://github.com/ikmb/virus-pipe | Software tools:");
 
 $text->translate(50,65);
 
