@@ -641,6 +641,7 @@ process mark_dups {
 		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
 		samtools index $bam_md_virus
 		rm fix.bam 
+		rm tmp.md.bam
 	"""
 
 }
