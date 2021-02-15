@@ -320,6 +320,7 @@ process make_bloomfilter {
 // *****************************
 // Filter reads against the human genome
 // Creates cleaned reads for assembly and tax profiling
+// This is optional and only useful when contamination from host is high
 // *****************************
 if (params.filter) {
 
@@ -430,9 +431,15 @@ process kraken2yaml {
 
 }
 
-// *****************************
+/*
+*/
+// ***********************************************
 // Assemble viral genome de-novo
-// *****************************
+// This is NOT used as a final output for the RKI
+// ***********************************************
+/*
+*/
+
 process denovo_assemble_virus {
 
 	label 'std'
@@ -509,10 +516,7 @@ process denovo_assembly_scaffold {
 	"""
 }
 
-// **************************
 // Run assembly QC with QUAST
-// **************************
-
 contigsScaffolds.into {assemblies; assemblies_qc }
 
 process assembly_qc {
@@ -610,9 +614,7 @@ process align_viral_reads_bwa {
 	"""
 }
 
-// ******************************************
 // Mark duplicate reads - excise viral genome for downstream analysis if combined ref was used
-// ******************************************
 process mark_dups {
 
        	label 'std'
@@ -646,9 +648,7 @@ process mark_dups {
 
 }
 
-// ************************
-// Coverage statistics
-// ************************
+// Mapping coverage statistics
 process coverage_stats {
 	
 	label 'std'
@@ -677,6 +677,7 @@ process coverage_stats {
 	
 }
 
+// Samtools alignment stats
 process align_stats {
 
         label 'std'
@@ -731,9 +732,7 @@ process call_variants {
 
 }
 
-// ********************
 // Filter variant calls
-// ********************
 process filter_vcf {
 	
        	label 'std'
@@ -754,6 +753,7 @@ process filter_vcf {
 	"""
 }
 
+// Normalize VCF and adjust genotypes as per RKI recommendations
 process normalize_and_adjust_vcf {
 
         publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
@@ -786,9 +786,7 @@ process normalize_and_adjust_vcf {
 
 }
 
-// *************************
 // Make consensus assembly
-// *************************
 
 inputMasking = bam2mask.join(Vcf2Mask, by: [0,1] )
 
@@ -954,6 +952,11 @@ process pangolin2yaml {
         """
 
 }
+
+
+// ******************************
+// Stats for Reporting
+// ******************************
 
 // Get statistics of variant calls
 process vcf_stats {
