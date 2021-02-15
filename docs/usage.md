@@ -91,10 +91,10 @@ The below settings are typically set in a site-specific config file and not mani
 ### `--kraken2_db` 
 The location of a Kraken2 formatted DB with viral sequences
 
-### `--pathoscope_index_dir`
-The location of a folder containing index files for Pathoscope (last available reference data from 2015 assumed)
+### `--host_index`
+A Bowtie2 formatted index of the human genome (e.g. from iGenomes) - is used to remove host reads prior to taxonomic assignment and (optional) de-novo assembly.
 
 ### `--ref_with_host`
-The base name of a bowtie2 formatted index containing a human genome sequence together with the Covid19 genome
+The base name of a BWA formatted index containing a human genome sequence together with the Covid19 genome. This is used to have decoys for mapping and variant calling. If this is not set, the built-in viral reference genome is used alone.  
 
 

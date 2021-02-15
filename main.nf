@@ -49,8 +49,6 @@ REF = file("${baseDir}/assets/reference/NC_045512.2.fa")
 REF_GFF = file("${baseDir}/assets/reference/NC_045512.2.gff")
 REF_NAME = "NC_045512.2"
 
-REF_WITH_HOST = file(params.ref_with_host)
-
 host_genome = Channel.fromPath("${params.host_index}*")
 
 // Minimum file size in bytes to attempt assembly from
@@ -73,16 +71,17 @@ if (params.primer_fasta) {
 	primers = Channel.empty()
 }  
 
-if (params.filter && params.fast_filter) {
-	log.info "Requested filter and fast_filter - will only use fast_filter..."
-	params.filter = false
-}
-
 // set basic global options like location of database files
-KRAKEN2_DB = params.kraken2_db
 
-PATHOSCOPE_INDEX_DIR=file(params.pathoscope_index_dir)
-
+if (params.kraken2_db) {
+	db_path = file(params.kraken2_db) 
+	if (!db_path.exists() ) {
+		exit 1, "The specified KrakenDB does not exist (params.kraken2_db)"
+	}
+} else {
+	exit 1, "Missing Kraken2 DB (params.kraken2_db)"
+}
+	
 OUTDIR = params.outdir
 
 run_name = ( !params.run_name) ? "${workflow.sessionId}" : "${params.run_name}"
@@ -97,8 +96,13 @@ if (params.samples && params.reads) {
 
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
-summary['PathoscopeDB'] = params.pathoscope_index_dir
-summary['MappingReference'] = REF
+
+if (params.ref_with_host) {
+	summary['MappingReference'] = params.ref_with_host
+} else {
+        summary['MappingReference'] = REF
+}
+
 summary['VariantCalling'] = [:]
 
 summary['VariantCalling']['VarCallCov'] = params.var_call_cov
@@ -121,7 +125,11 @@ log.info "...YP    Y888888P 88   YD ~Y8888P' `8888Y'        88      Y888888P 88 
 log.info "==================================================================================="
 log.info "${workflow.manifest.description}		v${params.version}"
 log.info "Nextflow Version:             	$workflow.nextflow.version"
-log.info "Mapping reference:		${params.ref_with_host}"
+if (params.ref_with_host) {
+	log.info "Mapping reference:		${params.ref_with_host}"
+} else {
+	log.info "Mapping reference:		${REF}"
+}
 log.info "Viral reference:             	${REF}"
 log.info "Virus DB:			${params.kraken2_db}"
 log.info "Assemble de-novo:		${params.assemble}"
@@ -157,7 +165,9 @@ def returnFile(it) {
 Channel.fromPath(REF)
 	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
 
-Channel.fromPath(REF_WITH_HOST)
+// Use a host genome + virus or a pure virus reference for mapping
+if (params.ref_with_host) {
+	Channel.fromPath(params.ref_with_host)
 	.map { fa ->
 		def bwa_amb = returnFile(fa + ".amb")
 		def bwa_ann = returnFile(fa + ".ann")
@@ -167,6 +177,9 @@ Channel.fromPath(REF_WITH_HOST)
 		[ fa, bwa_amb, bwa_ann, bwa_btw, bwa_pac, bwa_sa ]
 	}
 	.set { HostIndexFiles }
+} else {
+	HostIndexFiles = Channel.empty()
+}
 
 if (params.samples) {
 	Channel.from(file(params.samples))
@@ -236,6 +249,9 @@ process get_software_versions {
     """
 }
 
+// **********************
+// Trim reads
+// **********************
 process trim_reads {
 
 	label 'fastp'
@@ -265,12 +281,18 @@ process trim_reads {
         html = sampleID + ".fastp.html"
 
         """
-                fastp --in1 $fastqR1 --in2 $fastqR2 --out1 $left --out2 $right $options -f $params.clip -t $params.clip --detect_adapter_for_pe -w ${task.cpus} -j $json -h $html --length_required 35
+                fastp --in1 $fastqR1 --in2 $fastqR2 \
+			--out1 $left --out2 $right $options \
+			-f $params.clip -t $params.clip \
+			--detect_adapter_for_pe \
+			-w ${task.cpus} -j $json -h $html --length_required 35
         """
-	
+
 }
 
-// Get the fraction of Sars-CoV2 reads against this bloom filter
+// ***********************************
+// Make Bloomfilter from Sars-CoV2 ref
+// ***********************************
 process make_bloomfilter {
 
 	label 'std'
@@ -297,14 +319,14 @@ process make_bloomfilter {
 
 // *****************************
 // Filter reads against the human genome
+// Creates cleaned reads for assembly and tax profiling
+// This is optional and only useful when contamination from host is high
 // *****************************
-
 if (params.filter) {
 
         // ****************
         // Using Bowtie2
         // ****************
-
         process remove_host_reads_bt {
 
                 label 'std'
@@ -316,7 +338,7 @@ if (params.filter) {
                 path(bwt_files) from host_genome.collect()
 
                 output:
-                set val(patientID),val(id),file(left_clean),file(right_clean) into ( inputPathoscopeMap, inputKraken, inputSpades, inputFailed  )
+                set val(patientID),val(id),file(left_clean),file(right_clean) into ( inputKraken, inputSpades, inputFailed  )
 
                 script:
                 left_clean = id + ".clean.R1.fastq.gz"
@@ -325,14 +347,15 @@ if (params.filter) {
                 bowtie_log = id + ".txt"
 
                 """
-                        bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean  --un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
+                        bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean \
+				--un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
                 """
 
         }
 
 
 } else {
-	inputBioBloomHost.into { inputKraken; inputPathoscopeMap; inputSpades; inputFailed  }
+	inputBioBloomHost.into { inputKraken; inputSpades; inputFailed  }
 }
 
 // ************************
@@ -371,9 +394,6 @@ process kraken2_search {
 
 	publishDir "${OUTDIR}/${id}/Taxonomy/", mode: 'copy'
 
-	when:
-	params.taxonomy
-
 	input:
 	set val(patientID),val(id),file(left),file(right) from inputKraken
 
@@ -386,7 +406,7 @@ process kraken2_search {
 	kraken_log = id + ".kraken2.log"
 
 	"""
-		kraken2 --db $KRAKEN2_DB --threads ${task.cpus} --output $kraken_log --report $report $left $right 
+		kraken2 --db $params.kraken2_db --threads ${task.cpus} --output $kraken_log --report $report $left $right 
 		if [ ! -f $report ]; then
 			touch $report
 		fi
@@ -394,7 +414,6 @@ process kraken2_search {
 }
 
 process kraken2yaml {
-
 
 	input:
 	file(reports) from KrakenReport.collect()
@@ -411,6 +430,15 @@ process kraken2yaml {
 	"""
 
 }
+
+/*
+*/
+// ***********************************************
+// Assemble viral genome de-novo
+// This is NOT used as a final output for the RKI
+// ***********************************************
+/*
+*/
 
 process denovo_assemble_virus {
 
@@ -441,8 +469,8 @@ process denovo_assemble_virus {
 	"""
 }
 
+// Collect samples that are unsuitable for assembly
 process fail_sample {
-
 
 	publishDir "${OUTDIR}/Failed", mode: 'copy'
 
@@ -461,6 +489,7 @@ process fail_sample {
 
 }
 
+// Run de-novo assembly using coronaspades
 process denovo_assembly_scaffold {
 
 	label 'std'
@@ -487,10 +516,7 @@ process denovo_assembly_scaffold {
 	"""
 }
 
-// **************************
 // Run assembly QC with QUAST
-// **************************
-
 contigsScaffolds.into {assemblies; assemblies_qc }
 
 process assembly_qc {
@@ -520,66 +546,19 @@ process assembly_qc {
 		
 	"""
 }
+
 /*
 */
-
-if (params.pathoscope) {
-	// **********************
-	// Run pathoscope MAP
-	// **********************
-	process pathoscope_map {
-
-		label 'pathoscope'
-
-		input:
-		set val(patientID),val(id),file(left_reads),file(right_reads) from inputPathoscopeMap
-
-		output:
-		set val(patientID),val(id),file(pathoscope_sam) into inputPathoscopeId
-
-		script:
-		pathoscope_sam = id + ".sam"
-
-		"""
-        		pathoscope MAP -1 $left_reads -2 $right_reads -indexDir $PATHOSCOPE_INDEX_DIR -filterIndexPrefixes hg19_rRNA \
-	        	-targetIndexPrefix A-Lbacteria.fa,M-Zbacteria.fa,virus.fa -outAlign $pathoscope_sam -expTag $id -numThreads ${task.cpus}
-		"""
-
-	}
-
-	// **********************
-	// Run pathoscope ID
-	// **********************
-	process pathoscope_id {
-
-		label 'pathoscope'
-
-		publishDir "${OUTDIR}/${id}/Pathoscope", mode: 'copy'
-
-		input:
-		set val(patientID),val(id),file(samfile) from inputPathoscopeId.filter{ i,r -> r.size() > 1000000 }
-
-		output:
-		set val(patientID),val(id),file(pathoscope_tsv) into outputPathoscopeId
-
-		script:
-
-		//pathoscope_sam = "updated_" + samfile
-		pathoscope_tsv = id + "-sam-report.tsv"
-
-		"""
-        		pathoscope ID -alignFile $samfile -fileType sam -expTag $id
-		"""
-
-	}
-
-} // end pathoscope
 
 // **************************
 // RKI-compliant: align reads against reference genome and flip variant bases
 // **************************
+// Allow the use of a combined reference including virus and human
 
-if (params.with_host) {
+/*
+*/
+
+if (params.ref_with_host) {
 
 	BwaIndex = HostIndexFiles
 
@@ -635,9 +614,7 @@ process align_viral_reads_bwa {
 	"""
 }
 
-// ***********************
-// Mark duplicate reads
-// ***********************
+// Mark duplicate reads - excise viral genome for downstream analysis if combined ref was used
 process mark_dups {
 
        	label 'std'
@@ -666,14 +643,12 @@ process mark_dups {
 		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
 		samtools index $bam_md_virus
 		rm fix.bam 
+		rm tmp.md.bam
 	"""
 
 }
 
-// ************************
-// Coverage statistics
-// ************************
-
+// Mapping coverage statistics
 process coverage_stats {
 	
 	label 'std'
@@ -702,6 +677,7 @@ process coverage_stats {
 	
 }
 
+// Samtools alignment stats
 process align_stats {
 
         label 'std'
@@ -756,9 +732,7 @@ process call_variants {
 
 }
 
-// ********************
 // Filter variant calls
-// ********************
 process filter_vcf {
 	
        	label 'std'
@@ -779,6 +753,7 @@ process filter_vcf {
 	"""
 }
 
+// Normalize VCF and adjust genotypes as per RKI recommendations
 process normalize_and_adjust_vcf {
 
         publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
@@ -811,12 +786,11 @@ process normalize_and_adjust_vcf {
 
 }
 
-// *************************
 // Make consensus assembly
-// *************************
 
 inputMasking = bam2mask.join(Vcf2Mask, by: [0,1] )
 
+// Create a BED file of low-coverage regions
 process create_cov_mask {
 
 	publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'	
@@ -843,6 +817,7 @@ process create_cov_mask {
 
 MakeConsensus = Vcf2Consensus.join(ConsensusMask, by: [0,1])
 
+// Combine coverage mask with variants to flip assembly
 process consensus_assembly {
 
 	//publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
@@ -978,6 +953,12 @@ process pangolin2yaml {
 
 }
 
+
+// ******************************
+// Stats for Reporting
+// ******************************
+
+// Get statistics of variant calls
 process vcf_stats {
 
 	label 'std'
@@ -1000,6 +981,9 @@ process vcf_stats {
 
 }
 
+// **********************************
+// Run effect prediction using snpEff
+// **********************************
 process effect_prediction {
 
 	label 'std'
@@ -1049,7 +1033,15 @@ process final_report {
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
-		covid_report.pl --patient $patientID --kraken $kraken --software $version_yaml --pangolin $pangolin --depth $mosdepth --bam_stats $samtools --assembly_stats $fasta_qc --vcf $variants --plot $coverage_plot --outfile $patient_report > $patient_report_json
+		covid_report.pl --patient $patientID --kraken $kraken \
+			--software $version_yaml \
+			--pangolin $pangolin \
+			--depth $mosdepth \
+			--bam_stats $samtools \
+			--assembly_stats $fasta_qc \
+			--vcf $variants \
+			--plot $coverage_plot \
+			--outfile $patient_report > $patient_report_json
 	"""
 
 }
@@ -1179,6 +1171,3 @@ workflow.onComplete {
   }
 
 }
-
-
-
