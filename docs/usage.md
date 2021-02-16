@@ -93,6 +93,8 @@ The below settings are typically set in a site-specific config file and not mani
 ### `--kraken2_db` 
 The location of a Kraken2 formatted DB with viral sequences
 
+If you want to set up your own database, please see: https://github.com/DerrickWood/kraken2/wiki/Manual#custom-databases
+
 ### `--host_index`
 A Bowtie2 formatted index of the human genome (e.g. from iGenomes) - is used to remove host reads prior to taxonomic assignment and (optional) de-novo assembly.
 
