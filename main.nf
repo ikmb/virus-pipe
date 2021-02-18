@@ -662,6 +662,7 @@ process coverage_stats {
 	file(global_dist) into BamStats
 	set val(patientID),val(id),file(sam_coverage) into BamCoverage
 	set val(patientID),val(id),file(report),file(global_dist) into coverage_report
+	set val(patientID),val(id),file(global_dist) into Depth2Select
 
 	script:
 	global_dist = id + ".mosdepth.global.dist.txt"
@@ -856,23 +857,24 @@ process consensus_header {
 	set val(patientID),val(id),file(consensus) from Consensus2Header
 
 	output:
-	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc)
+	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select )
 	file(consensus_masked_reheader)
 
 	script:
+	base_id = id.split("-")[0]
+	consensus_reheader = base_id + ".fasta"
+	consensus_masked_reheader = base_id + ".masked.fasta"
 
-	consensus_reheader = id + ".iupac_consensus.fasta"
-	consensus_masked_reheader = id + ".masked_consensus.fasta"
-
-	header = id + "_iupac_consensus_v" + params.version 
-	masked_header = id + "_masked_consensus_v" + params.version
+	header = base_id 
+	masked_header = base_id
+	description = id.split("-")[1..-1].join("-")
 
 	"""
-		echo '>$header' > $consensus_reheader
+		echo '>$header $description' > $consensus_reheader
 		tail -n +2 $consensus | fold -w 80 >> $consensus_reheader
 		echo  >> $consensus_reheader
 
-		echo '>$masked_header' > $consensus_masked_reheader
+		echo '>$masked_header $description' > $consensus_masked_reheader
 		
 		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
 		echo >> $consensus_masked_reheader
@@ -891,7 +893,7 @@ process consensus_qc {
 	set val(patientID),val(id),file(consensus_reheader)  from consensus2qc
 
 	output:
-	set val(patientID),val(id),file(stats) into ConsensusStats
+	set val(patientID),val(id),file(stats) into (ConsensusStats, ConsensusStats2Select)
 
 	script:
 	stats = id + "_assembly_report.txt"
@@ -900,6 +902,32 @@ process consensus_qc {
 		gaas_fasta_statistics.pl -f $consensus_reheader -o stats > $stats
 	"""
 }
+
+// Automatically select assemblies that qualify for submission to RKI
+ConsensusSelection = assemblies2select.join(ConsensusStats2Select, by: [0,1]).join(Depth2Select, by: [0,1])
+
+process consensus_select_pass {
+
+	publishDir "${params.outdir}/RKI_Assemblies", mode: 'copy'
+
+	input:
+	set val(patientID),val(sampleID),file(assembly),file(assembly_stats),file(coverage_stats) from ConsensusSelection
+
+	output:
+	file("00PASS/*") optional true into PassAssembly
+	file("00FAIL/*") optional true into FailAssembly
+
+	script:
+
+	"""
+		mkdir -p PASS
+		mkdir -p FAIL
+		select_pass_assembly.pl --assembly $assembly --assembly_stats $assembly_stats --coverage $coverage_stats
+	"""
+}
+
+/*
+*/
 
 // **********************
 // Determine Pangolin lineage

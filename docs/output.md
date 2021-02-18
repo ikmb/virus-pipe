@@ -16,11 +16,13 @@ This folder contains run metrics, like core hours used, the processing time for 
 
 Per-sample reports to be used for individual validation - contains information on assembly coverage, annotated SNPs and effect prediction. Available as human-readable PDF as well as JSON.
 
+The easiest way to get the structure of the JSON file is to just [lint](https://jsonlint.com/) it.
+
 ### `results/Pangolin`
 
 The joint Pangolin lineage predictions.
 
-### `results/RKI_Assemblis`
+### `results/RKI_Assemblies`
 
 Per-sample genome assemblies for submission to the RKI. Each assembly is available as IUPAC-aware version and one, in which all variable bases are masked. Only the former is typically used. 
 
