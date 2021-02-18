@@ -3,14 +3,19 @@
 This pipeline can process Illumina short reads from sequenced viral cDNA, Metatranscriptomes or similar to:
 
 * clean/trim reads
+* align reads against a defined reference (virus or virus+human)
+* variant calling against viral reference + normalization + filtering
+* create RKI-compliant consensus assembly (ref-flipping)
+* lineage-typing using Pangolin
+
+Optional/non-essential additional steps:
+
 * remove reads mapping the a host genome (default: human)
 * extract reads matching a reference genome (default: COVID19)
 * - perform taxonomic identification against a database of viral reference genome
-* - perform taxonomic identification against a database of clinical pathogens (bacterial and viral, 2015)
-* map viral reads against a reference genome and perform variant calling (default: COVID19)
-* assembly viral genome
+* assemble viral genome de-novo
+* - scaffold de-novo contigs against reference
 * - align de-novo assembly against reference genome
-* - generate consensus assembly (RKI compliant)
 
 ## Basic execution
 
@@ -78,9 +83,6 @@ Assemble the reads using Spades. This option is always on by default.
 ### `--guided` (default: false)
 Use the built-in Covid19 reference to guide assembly (this will likely inflate assembly metrics). This option is always on by default. 
 
-### `--taxonomy` (default: false)
-Run the Pathoscope pipeline to check for other metagenomic signals in the data.
-
 ### `--filter` (default: true)
 If this option is set, the trimmed reads will be mapped and filtered against the human genome using Bowtie2 prior to taxonomic assignment.
 
@@ -91,10 +93,12 @@ The below settings are typically set in a site-specific config file and not mani
 ### `--kraken2_db` 
 The location of a Kraken2 formatted DB with viral sequences
 
+If you want to set up your own database, please see: https://github.com/DerrickWood/kraken2/wiki/Manual#custom-databases
+
 ### `--host_index`
 A Bowtie2 formatted index of the human genome (e.g. from iGenomes) - is used to remove host reads prior to taxonomic assignment and (optional) de-novo assembly.
 
 ### `--ref_with_host`
-The base name of a BWA formatted index containing a human genome sequence together with the Covid19 genome. This is used to have decoys for mapping and variant calling. If this is not set, the built-in viral reference genome is used alone.  
-
+The base name of a BWA formatted index containing a human genome sequence together with the Sars-CoV2 [genome](../assets/reference/NC_045512.2.fa). This is used to have decoys for mapping and variant calling. If this is not set, the built-in viral reference genome is used only.  
+This should be fine, we have not yet seen a clear advantage of using a combined reference when working off amplicon data (this might be different for metagenomic data). 
 

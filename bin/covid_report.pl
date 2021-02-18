@@ -56,10 +56,13 @@ if ($help) {
 
 my $library = (split /\./, $kraken)[0];
 
+my $date = localtime;
+
 my %data; # hold information for JSON reporting
 
 $data{"Sample"}= {"library" => $library, "patient" => $patient} ;
 $data{"Reference"} = "NC_045512.2.";
+$data{"timestamp"} = $date;
 
 ##########################
 ## PARSE SOFTWARE VERSIONS
@@ -86,6 +89,7 @@ while (<$IN>) {
 close($IN);
 
 $data{"Software"} = { %tools };
+$data{"Version"} = $pipeline_version;
 
 ########################
 ## PARSE MOSDEPTH REPORT
@@ -219,15 +223,15 @@ while (<$IN>) {
 }
 close($IN);
 
-$data{"Assembly"}= {"Komplett" => $genome_fraction, "Laenge" => $assembly_length, "Gaps" => $assembly_gaps} ;
+my $rounded = 100*(sprintf "%.2f", $genome_fraction);
+
+$data{"Assembly"}= {"Anteil_Ns" => $rounded, "Laenge" => $assembly_length, "Gaps" => $assembly_gaps} ;
 
 #########################
 ## PARSE SnpEff VCF FILE
 #########################
 
 open (my $IN, '<', $vcf) or die "FATAL: Can't open file: $vcf for reading.\n$!\n";
-
-# MN908947.3      21      .       CAGGTAACAA      GACGGCCAGT      5925.49 
 
 # Array of hashes to old effect predictions for each position
 my @variant_data;
@@ -435,7 +439,6 @@ $text->text("Anteil Ns am Assembly:");
 
 $text->font($font,10);
 $text->translate(250,$step);
-my $rounded = 100*(sprintf "%.2f", $genome_fraction);
 
 if ($rounded > 5) {
         $text->fillcolor('red');
@@ -535,7 +538,6 @@ $text->text($audit);
 
 $text->translate(50,50);
 
-my $date = localtime;
 
 $text->text("Report erstellt: $date");
 
