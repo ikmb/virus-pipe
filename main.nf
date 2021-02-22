@@ -920,8 +920,8 @@ process consensus_select_pass {
 	script:
 
 	"""
-		mkdir -p PASS
-		mkdir -p FAIL
+		mkdir -p 00PASS
+		mkdir -p 00FAIL
 		select_pass_assembly.pl --assembly $assembly --assembly_stats $assembly_stats --coverage $coverage_stats
 	"""
 }
