@@ -50,6 +50,9 @@ You can edit this file to replace the library-derived labels for IndivID and/or 
 ### `--run_name`
 Provide a usefull name to this analysis run (could be the LIMS project ID)
 
+### `--outdir` (default: results)
+A folder name to which all outputs are written. This can also be a path (relative or absolute) - the target location with be created if necessary. 
+
 ### `--clip` (default: 20)
 Remove n bases from both 3' and 5' of each read to account for fragmented amplicon primers that cannot be detected otherwise.
 
