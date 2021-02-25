@@ -271,7 +271,7 @@ process trim_reads {
 
         script:
 	def options = ""
-	if (primer_fa) {
+	if (primer_fa || primer_fa != "input.3") {
 		options = "--adapter_fasta " + primer_fa
 	}
 
