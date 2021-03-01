@@ -194,6 +194,7 @@ if (params.samples) {
        .set {  reads_fastp }
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
+	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
         .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
         .set { reads_fastp }
 }
