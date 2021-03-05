@@ -23,4 +23,5 @@ dependencies:
   - ragtag=1.0.2
   - bwa=0.7.17
   - perl-excel-writer-xlsx
-
+  - perl-json
+  - perl-json-parse
