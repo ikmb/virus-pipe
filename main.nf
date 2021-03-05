@@ -929,6 +929,29 @@ process consensus_select_pass {
 
 /*
 */
+process rki_metadata {
+
+	executor 'local'
+
+	publishDir "${params.outdir}/RKI_Assemblies/00PASS", mode: 'copy'	
+
+	when:
+	params.metadata
+
+	input:
+	file('*') from PassAssembly.collect()
+
+	output:
+	file(metadata)
+
+	script:
+	metadata = run_name + ".metadata.csv"
+
+	"""
+		ikmb_metadata.pl > $metadata
+	"""
+
+}
 
 // **********************
 // Determine Pangolin lineage
