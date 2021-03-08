@@ -216,6 +216,23 @@ process get_pangolin_version {
 	"""
 }
 
+process get_bowtie_version {
+
+	label 'bowtie2'
+
+	executor 'local'
+
+	output:
+	file(bowtie_version) into bowtie2_version
+
+	script:
+	bowtie_version = "v_bowtie2.txt"
+
+	"""
+		bowtie2 --version &> $bowtie_version
+	"""
+}
+
 process get_software_versions {
 
     label 'std'
@@ -224,6 +241,7 @@ process get_software_versions {
 
     input:
     file(pangolin_version) from pango_version
+    file(bowtie_version) from bowtie2_version
 
     output:
     file("v*.txt")
@@ -244,7 +262,6 @@ process get_software_versions {
 	    bcftools --version &> v_bcftools.txt
 	    multiqc --version &> v_multiqc.txt
 	    bwa &> v_bwa.txt 2>&1 || true	    
-	    bowtie2 --version &> v_bowtie2.txt
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
     """
@@ -330,7 +347,7 @@ if (params.filter) {
         // ****************
         process remove_host_reads_bt {
 
-                label 'std'
+                label 'bowtie2'
 
                 publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
 
