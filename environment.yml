@@ -24,3 +24,4 @@ dependencies:
   - perl-excel-writer-xlsx
   - perl-json=4.02
   - perl-json-parse=0.55
+  - perl-rest-client
