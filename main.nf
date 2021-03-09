@@ -947,6 +947,8 @@ process consensus_select_pass {
 /*
 */
 process rki_metadata {
+	
+	label 'std'
 
 	executor 'local'
 
