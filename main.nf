@@ -194,6 +194,7 @@ if (params.samples) {
        .set {  reads_fastp }
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
+	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
         .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
         .set { reads_fastp }
 }
@@ -215,6 +216,23 @@ process get_pangolin_version {
 	"""
 }
 
+process get_bowtie_version {
+
+	label 'bowtie2'
+
+	executor 'local'
+
+	output:
+	file(bowtie_version) into bowtie2_version
+
+	script:
+	bowtie_version = "v_bowtie2.txt"
+
+	"""
+		bowtie2 --version &> $bowtie_version
+	"""
+}
+
 process get_software_versions {
 
     label 'std'
@@ -223,6 +241,7 @@ process get_software_versions {
 
     input:
     file(pangolin_version) from pango_version
+    file(bowtie_version) from bowtie2_version
 
     output:
     file("v*.txt")
@@ -243,7 +262,6 @@ process get_software_versions {
 	    bcftools --version &> v_bcftools.txt
 	    multiqc --version &> v_multiqc.txt
 	    bwa &> v_bwa.txt 2>&1 || true	    
-	    bowtie2 --version &> v_bowtie2.txt
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
     """
@@ -329,7 +347,7 @@ if (params.filter) {
         // ****************
         process remove_host_reads_bt {
 
-                label 'std'
+                label 'bowtie2'
 
                 publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
 
@@ -870,11 +888,11 @@ process consensus_header {
 	description = id.split("-")[1..-1].join("-")
 
 	"""
-		echo '>$header $description' > $consensus_reheader
+		echo '>$header' > $consensus_reheader
 		tail -n +2 $consensus | fold -w 80 >> $consensus_reheader
 		echo  >> $consensus_reheader
 
-		echo '>$masked_header $description' > $consensus_masked_reheader
+		echo '>$masked_header' > $consensus_masked_reheader
 		
 		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
 		echo >> $consensus_masked_reheader
@@ -928,6 +946,31 @@ process consensus_select_pass {
 
 /*
 */
+process rki_metadata {
+	
+	label 'std'
+
+	executor 'local'
+
+	publishDir "${params.outdir}/RKI_Assemblies/00PASS", mode: 'copy'	
+
+	when:
+	params.metadata
+
+	input:
+	file('*') from PassAssembly.collect()
+
+	output:
+	file(metadata)
+
+	script:
+	metadata = run_name + ".metadata.csv"
+
+	"""
+		ikmb_metadata.pl > $metadata
+	"""
+
+}
 
 // **********************
 // Determine Pangolin lineage
