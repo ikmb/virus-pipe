@@ -888,11 +888,11 @@ process consensus_header {
 	description = id.split("-")[1..-1].join("-")
 
 	"""
-		echo '>$header $description' > $consensus_reheader
+		echo '>$header' > $consensus_reheader
 		tail -n +2 $consensus | fold -w 80 >> $consensus_reheader
 		echo  >> $consensus_reheader
 
-		echo '>$masked_header $description' > $consensus_masked_reheader
+		echo '>$masked_header' > $consensus_masked_reheader
 		
 		tail -n +2 $consensus | tr "RYSWKMBDHVN" "N" | fold -w 80 >> $consensus_masked_reheader
 		echo >> $consensus_masked_reheader
