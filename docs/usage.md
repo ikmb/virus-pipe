@@ -93,6 +93,9 @@ If this option is set, the trimmed reads will be mapped and filtered against the
 
 The below settings are typically set in a site-specific config file and not manipulated from the command line. 
 
+### `--metadata`
+Enables an additional process that retrieves sample-specific meta data to produce a RKI compatible meta data sheet. This uses an in-house script and only works on the IKMB infrastructure. It is enabled by default on systems that support this option. 
+
 ### `--kraken2_db` 
 The location of a Kraken2 formatted DB with viral sequences
 
