@@ -876,6 +876,7 @@ process consensus_header {
 
 	output:
 	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select )
+	file(consensus_reheader) into assemblies_db_upload
 	file(consensus_masked_reheader)
 
 	script:
@@ -1095,7 +1096,7 @@ process final_report {
 
 	output:
 	file(patient_report) 
-	file(patient_report_json)
+	file(patient_report_json) into json_reports
 
 	script:
 
@@ -1115,6 +1116,30 @@ process final_report {
 			--outfile $patient_report > $patient_report_json
 	"""
 
+}
+
+process db_upload {
+
+	executor 'local'
+
+	label 'ruby'
+
+	when:
+	params.db
+
+	input:
+	file('*') from assemblies_db_upload.collect()
+	file('*') from json_reports.collect()
+
+	output:
+	file(log)
+
+	script:
+	log = run_name + ".db_upload.log"
+
+	"""
+		upload.rb > $log
+	"""
 }
 
 // **********************

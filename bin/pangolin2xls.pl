@@ -49,8 +49,8 @@ my $worksheet = $workbook->add_worksheet();
 my $row = 0;
 my @bucket;
 
-my @h = ( "K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
-push(@bucket, "K-Nummer;Pangolin-Typisierung;TechnischeValidierung");
+my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
+push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;TechnischeValidierung");
 
 &write_xlsx($worksheet, $row, @h);
 ++$row;
@@ -76,10 +76,10 @@ foreach my $file (glob("$dir/*.csv")) {
 
                 next unless ($status eq "passed_qc");
 
-                my @ele = ( $lib, $lineage, "" );
+                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage, "OK" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
-		my $entry = $lib . ";" . $lineage . ";" ;
+		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina;" . $seq . ";" . $lineage . ";" . "OK" ;
 		push(@bucket, $entry);
         }
 
