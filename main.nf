@@ -162,6 +162,27 @@ def returnFile(it) {
     return inputFile
 }
 
+process fetch_critical_lineages {
+
+	executor 'local'
+
+	output:
+	file("*.csv") into variant_definitions
+
+	script:
+	
+	"""
+		wget https://github.com/cov-lineages/pangolin/archive/refs/tags/v2.3.8.tar.gz
+		tar -xvf v2.3.8.tar.gz 
+		mv pangolin-2.3.8/pangolin/data/*.csv .
+		rm -Rf *.tar.gz pangolin*
+	"""
+
+}
+
+/*
+*/
+
 Channel.fromPath(REF)
 	.into {  inputNormalize; Ref2Consensus; Ref2BwaIdx ; inputBloomMaker; Ref2Freebayes }
 
