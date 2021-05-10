@@ -71,8 +71,10 @@ foreach my $file (glob("$dir/*.csv")) {
 
                 chomp($line);
                 # taxon,lineage,probability,pangoLEARN_version,status,note
+		# NEW: taxon,lineage,conflict,pangoLEARN_version,pango_version,status,note
                 # NODE_1_length_29902_cov_249.978980,B,1.0,2021-01-16,passed_qc,
-                my ($seq,$lineage,$prob,$vers,$status,$note) = split(",", $line);
+		
+                my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 
                 next unless ($status eq "passed_qc");
 
