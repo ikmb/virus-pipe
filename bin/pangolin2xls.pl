@@ -49,7 +49,7 @@ my $worksheet = $workbook->add_worksheet();
 my $row = 0;
 my @bucket;
 
-my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
+my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "Scorpio Call", "TechnischeValidierung" );
 push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;TechnischeValidierung");
 
 &write_xlsx($worksheet, $row, @h);
@@ -72,16 +72,17 @@ foreach my $file (glob("$dir/*.csv")) {
                 chomp($line);
                 # taxon,lineage,probability,pangoLEARN_version,status,note
 		# NEW: taxon,lineage,conflict,pangoLEARN_version,pango_version,status,note
-                # NODE_1_length_29902_cov_249.978980,B,1.0,2021-01-16,passed_qc,
+
+                my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
 		
                 my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 
                 next unless ($status eq "passed_qc");
 
-                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage, "OK" );
+                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage, $scorpio_call,  "OK" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
-		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina;" . $seq . ";" . $lineage . ";" . "OK" ;
+		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina;" . $seq . ";" . $lineage . ";" . $scorpio_call . ";" . "OK" ;
 		push(@bucket, $entry);
         }
 

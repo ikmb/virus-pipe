@@ -122,6 +122,7 @@ open (my $IN, '<', $pangolin) or die "FATAL: Can't open file: $pangolin for read
 
 # parse pangolin report and get lineage assignment
 my $global_lineage = "undetermined";
+my $voc_call = undef;
 
 chomp(my @lines = <$IN>);
 
@@ -133,16 +134,20 @@ foreach my $line (@lines) {
         # taxon,lineage,probability,pangoLEARN_version,status,note
         # NODE_1_length_29902_cov_249.978980,B,1.0,2021-01-16,passed_qc,
         #my ($seq,$lineage,$prob,$vers,$status,$note) = split(",", $line);
-	my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
+	#my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
+	my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
+
         next unless ($status eq "passed_qc");
 
-	$global_lineage = $lineage;	
-
+	$global_lineage = $lineage;
+	if (length $scorpio_call > 0) {
+		$voc_call = $scorpio_call;
+	}
 }
 
 close($IN);
 
-$data{"Pangolin"}= {"lineage" => $global_lineage} ;
+$data{"Pangolin"}= {"lineage" => $global_lineage, "voc" => $voc_call } ;
 
 ######################
 ## PARSE KRAKEN REPORT
@@ -417,6 +422,17 @@ $text->text("Typ/Lineage (Pangolin):");
 $text->font($font,10);
 $text->translate(250,$step);
 $text->text("${global_lineage}");
+
+if (defined $voc_call) {
+	$step -= 15;
+	$text->font($b_font,10);
+	$text->translate(50,$step);
+	$text->text("Kritische Variante");
+	
+	$text->font($font,10);
+	$text->translate(250,$step);
+	$text->text("Ja (${voc_call})");
+}
 
 $step -= 30;
 $text->font($b_font,12);
