@@ -60,6 +60,8 @@ foreach my $file (glob("$dir/*.csv")) {
         my $fh = IO::File->new();
         $fh->open( $file );
 
+	printf STDERR "Reading $file\n";
+
 	my $f = (split "/" , $file)[-1];
         my $lib = (split /\./ , $f)[0];
 
@@ -72,10 +74,11 @@ foreach my $file (glob("$dir/*.csv")) {
                 chomp($line);
                 # taxon,lineage,probability,pangoLEARN_version,status,note
 		# NEW: taxon,lineage,conflict,pangoLEARN_version,pango_version,status,note
+		# NEWER: taxon,lineage,conflict,ambiguity_score,scorpio_call,scorpio_support,scorpio_conflict,version,pangolin_version,pangoLEARN_version,pango_version,status,note
 
                 my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
 		
-                my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
+                #my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 
                 next unless ($status eq "passed_qc");
 
