@@ -8,8 +8,8 @@ extra_fn_clean_exts:
     - _R1
     - _R2
     - .dedup
-    - type: regexp
-      pattern: "_S[0-9]_L00[0-9]$"
+    - type: regex
+      pattern: "-S[0-9]-L[0-9]_S[0-9]*_L00[0-9]"
 report_comment: >
     This report has been generated automatically by the IKMB Virus pipeline.
     For help interpreting the outputs, please see: https://github.com/ikmb/virus-pipe
@@ -17,6 +17,20 @@ report_comment: >
 report_header_info:
     - Contact E-mail: "m.hoeppner@ikmb.uni-kiel.de"
     - Application Type: "Viral sequencing"
+
+table_columns_placement:
+  Pangolin:
+    lineage: 800
+  mosdepth:
+    30_x_pc: 900
+
+table_columns_visible:
+  Samtools:
+    non-primary_alignments: False
+    reads_properly_paired_percent: False
+  fastp:
+    after_filtering_gc_content: False
+    pct_surviving: False
 
 top_modules:
     - 'general_stats'
