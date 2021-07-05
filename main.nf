@@ -297,7 +297,12 @@ process trim_reads {
 
 	scratch true
 
-        publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
+        publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy',
+		saveAs: {filename ->
+                if (filename.indexOf(".html") > 0) filename
+                else if (filename.indexOf(".json") > 0) filename
+                else null
+            }
 
         input:
         set val(patientID),val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
@@ -1180,7 +1185,6 @@ process MultiQC {
 	file('*') from KrakenYaml.ifEmpty('')
 	file('*') from BamAlignStats.collect()
 	file('*') from QuastReport.collect().ifEmpty('')
-	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
 	file('*') from software_versions_yaml.collect()
 	file('*') from PangolinMultiqc.collect()
