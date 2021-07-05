@@ -1008,6 +1008,7 @@ process assembly_pangolin {
 
         output:
         set val(patientID),val(id),path(report) into (pangolin_report, Pangolin2Report)
+	file(report) into PangolinMultiqc
 
         script:
 
@@ -1182,6 +1183,7 @@ process MultiQC {
 	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
 	file('*') from software_versions_yaml.collect()
+	file('*') from PangolinMultiqc.collect()
 
 	output:
 	file(report) into multiqc_report
