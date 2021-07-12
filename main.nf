@@ -901,7 +901,7 @@ process consensus_header {
 	set val(patientID),val(id),file(consensus) from Consensus2Header
 
 	output:
-	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select )
+	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select)
 	file(consensus_reheader) into assemblies_db_upload
 	file(consensus_masked_reheader)
 
@@ -930,8 +930,6 @@ process consensus_header {
 // QC of the final IUPAC assembly
 process consensus_qc {
 
-	label 'gaas'
-
 	publishDir "${OUTDIR}/${id}/QC", mode: 'copy'
 
 	input:
@@ -944,7 +942,7 @@ process consensus_qc {
 	stats = id + "_assembly_report.txt"
 
 	"""
-		gaas_fasta_statistics.pl -f $consensus_reheader -o stats > $stats
+		assembly_stats.pl -i $consensus_reheader > $stats
 	"""
 }
 
