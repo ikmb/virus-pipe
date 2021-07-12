@@ -97,7 +97,7 @@ $data{"Version"} = $pipeline_version;
 
 open (my $IN, '<', $depth) or die "FATAL: Can't open file: $depth for reading.\n$!\n";
 
-my $target_cov = "undetermined";
+my $target_cov = "0";
 
 chomp(my @lines = <$IN>);
 
@@ -108,7 +108,11 @@ foreach my $line (@lines) {
 	# Get the fraction of the genome covered at 20X
 	if ($line =~ /^total	20	.*/) {
 		my ($t,$c,$target_coverage) = split(/\t/,$line);
-		$target_cov = $target_coverage*100;
+		if ($target_coverage eq "undetermined") {
+			$target_coverage = 0 ;
+		} else {
+			$target_cov = $target_coverage*100;
+		}
 	}
 
 }
@@ -219,9 +223,9 @@ while (<$IN>) {
         chomp;
         my $line = $_;
 
-        if ($line =~ /.*Nb of nucleotides \(counting.*/) {
+        if ($line =~ /^Total.*/) {
 		($assembly_length) = $line =~ /(\d+)/;
-	} elsif ( $line =~ /.Nb of Ns./) {
+	} elsif ( $line =~ /^N.*/) {
 		($assembly_gaps) = $line =~ /(\d+)/;
 		$genome_fraction = ($assembly_gaps/$assembly_length) ;
 	}
