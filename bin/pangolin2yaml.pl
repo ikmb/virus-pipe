@@ -36,6 +36,32 @@ if ($outfile) {
 my %data;
 my $dir = getcwd;
 
+my %lookup = ( "AY" => "B.1.617.2",
+		"Q" => "B.1.1.7",
+		"AZ" => "B.1.1.318",
+		"C" => "B.1.1.1.",
+		"D" => "B.1.1.25",
+		"G" => "B.1.258.2",
+		"K" => "B.1.1.277",
+		"M" => "B.1.1.294",
+		"N" => "B.1.1.33",
+		"P" => "B.1.1.28",
+		"R" => "B.1.1.316",
+		"S" => "B.1.1.217",
+		"U" => "B.1.177.60",
+		"V" => "B.1.177.54",
+		"W" => "B.1.177.53",
+		"Y" => "B.1.177.52",
+		"Z" => "B.1.177.50",
+		"AA" => "B.1.177.15",
+		"AB" => "B.1.160.16",
+		"AC" => "B.1.1.405",
+		"AD" => "B.1.1.315",
+		"AE" => "B.1.1.306",
+		"AF" => "B.1.1.305",
+		"AH" => "B.1.1.241",
+);
+
 my $header = qq(
 id: 'pangolin_reports'
 section_name: 'Pangolin lineage assignment'
@@ -64,7 +90,6 @@ foreach my $file (glob("$dir/*.csv")) {
 	chomp(my @lines = <$fh>);
 
 	my $header = shift @lines ;
-
 	
 	foreach my $line (@lines) {
 
@@ -76,6 +101,13 @@ foreach my $file (glob("$dir/*.csv")) {
                 my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
 
 		next unless ($status eq "passed_qc");
+		chomp($lineage);
+
+		my $trunk = (split /\./, $lineage)[0] ;
+
+		if (exists $lookup{$trunk}) {
+			$lineage = $lookup{$trunk};
+		}
 
 		my $entry = "<dt>$lib</dt><dd><samp>$lineage</samp></dd>" ;
                 printf "    $entry\n";
