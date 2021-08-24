@@ -20,6 +20,32 @@ perl my_script.pl
 
 my $outfile = undef;
 
+my %lookup = ( "AY" => "B.1.617.2",
+                "Q" => "B.1.1.7",
+                "AZ" => "B.1.1.318",
+                "C" => "B.1.1.1.",
+                "D" => "B.1.1.25",
+                "G" => "B.1.258.2",
+                "K" => "B.1.1.277",
+                "M" => "B.1.1.294",
+                "N" => "B.1.1.33",
+                "P" => "B.1.1.28",
+                "R" => "B.1.1.316",
+                "S" => "B.1.1.217",
+                "U" => "B.1.177.60",
+                "V" => "B.1.177.54",
+                "W" => "B.1.177.53",
+                "Y" => "B.1.177.52",
+                "Z" => "B.1.177.50",
+                "AA" => "B.1.177.15",
+                "AB" => "B.1.160.16",
+                "AC" => "B.1.1.405",
+                "AD" => "B.1.1.315",
+                "AE" => "B.1.1.306",
+                "AF" => "B.1.1.305",
+                "AH" => "B.1.1.241",
+);
+
 my $help;
 
 GetOptions(
@@ -81,6 +107,13 @@ foreach my $file (glob("$dir/*.csv")) {
                 #my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 
                 next unless ($status eq "passed_qc");
+
+		# shorten call into main lineage only
+		chomp($lineage);
+                my $trunk = (split /\./, $lineage)[0] ;
+                if (exists $lookup{$trunk}) {
+                        $lineage = $lookup{$trunk};
+                }
 
                 my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage,  "OK" );
                 &write_xlsx($worksheet, $row, @ele);
