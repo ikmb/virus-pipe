@@ -220,6 +220,20 @@ if (params.samples) {
         .set { reads_fastp }
 }
 
+process get_pangolin_aliases {
+
+	executor 'local'
+
+	output:
+	file("alias_key.json") into pangolin_alias_json
+
+	script:
+
+	"""
+		wget https://raw.githubusercontent.com/cov-lineages/pango-designation/master/pango_designation/alias_key.json
+	"""
+}
+	
 process get_pangolin_version {
 
 	executor 'local'
@@ -1031,6 +1045,7 @@ process pangolin2yaml {
 
         input:
         file(reports) from pangolin_report.collect()
+	file(json) from pangolin_alias_json.collect()
 
         output:
         file(report) into PangolinYaml
@@ -1044,12 +1059,11 @@ process pangolin2yaml {
 	csv = "pangolin." + run_name + ".csv"
 
         """
-                pangolin2yaml.pl > $report
-		pangolin2xls.pl --outfile $xls > $csv
+                pangolin2yaml.pl --alias $json > $report
+		pangolin2xls.pl --alias $json --outfile $xls > $csv
         """
 
 }
-
 
 // ******************************
 // Stats for Reporting

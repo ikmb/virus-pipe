@@ -3,6 +3,9 @@
 use strict;
 use Getopt::Long;
 use Cwd;
+use JSON;
+use Data::Dumper;
+
 my $usage = qq{
 perl my_script.pl
   Getting help:
@@ -16,11 +19,12 @@ perl my_script.pl
 };
 
 my $outfile = undef;
-
+my $alias = undef;
 my $help;
 
 GetOptions(
     "help" => \$help,
+    "alias=s" => \$alias,
     "outfile=s" => \$outfile);
 
 # Print Help and exit
@@ -36,31 +40,12 @@ if ($outfile) {
 my %data;
 my $dir = getcwd;
 
-my %lookup = ( "AY" => "B.1.617.2",
-		"Q" => "B.1.1.7",
-		"AZ" => "B.1.1.318",
-		"C" => "B.1.1.1.",
-		"D" => "B.1.1.25",
-		"G" => "B.1.258.2",
-		"K" => "B.1.1.277",
-		"M" => "B.1.1.294",
-		"N" => "B.1.1.33",
-		"P" => "B.1.1.28",
-		"R" => "B.1.1.316",
-		"S" => "B.1.1.217",
-		"U" => "B.1.177.60",
-		"V" => "B.1.177.54",
-		"W" => "B.1.177.53",
-		"Y" => "B.1.177.52",
-		"Z" => "B.1.177.50",
-		"AA" => "B.1.177.15",
-		"AB" => "B.1.160.16",
-		"AC" => "B.1.1.405",
-		"AD" => "B.1.1.315",
-		"AE" => "B.1.1.306",
-		"AF" => "B.1.1.305",
-		"AH" => "B.1.1.241",
-);
+open my $fh, '<', $alias or die "Can't open file $!";
+
+my $file_content = do { local $/; <$fh> };
+	
+my $lookup = decode_json($file_content);
+	
 
 my $header = qq(
 id: 'pangolin_reports'
@@ -105,8 +90,11 @@ foreach my $file (glob("$dir/*.csv")) {
 
 		my $trunk = (split /\./, $lineage)[0] ;
 
-		if (exists $lookup{$trunk}) {
-			$lineage = $lookup{$trunk};
+		if (exists $lookup->{$trunk} ) {
+			my $match = $lookup->{$trunk};
+			if (length $match > 0) {
+				$lineage = $lookup->{$trunk};
+			}
 		}
 
 		my $entry = "<dt>$lib</dt><dd><samp>$lineage</samp></dd>" ;
