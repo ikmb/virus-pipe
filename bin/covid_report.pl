@@ -531,7 +531,7 @@ $pdftable->table(
      'font_size'       => 7,
      'background_color_odd'    => "white",
      'background_color_even'   => "lightgray", 
-     'max_word_length' => 50, # 50 between forced splits
+     'max_word_length' => 30, # 50 between forced splits
 );
 
 ## Footer ##
