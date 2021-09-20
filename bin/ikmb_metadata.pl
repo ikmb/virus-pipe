@@ -16,7 +16,7 @@ my $global_headers = { 'Content-Type' => 'application/json' };
 
 my $dir = getcwd;
 
-printf "SENDING_LAB;DATE_DRAW;SEQ_TYPE;SEQ_REASON;SAMPLE_TYPE;PUBLICATION_STATUS;OWN_FASTA_ID\n";
+printf "SENDING_LAB;DATE_DRAW;SEQ_TYPE;SEQ_REASON;SAMPLE_TYPE;PUBLICATION_STATUS;VERSION;OWN_FASTA_ID\n";
 
 foreach my $file (glob("$dir/*.fasta")) {
 
@@ -34,7 +34,7 @@ foreach my $file (glob("$dir/*.fasta")) {
 	my $date = (split "T", $date_full)[0];
 	$date =~ s/-//g ;
 	
-	printf "10337" . ";" . $date . ";" . "ILLUMINA" . ";" . "X" . ";" . "X" . ";" . "P" . ";" . $knumber . "\n" ;
+	printf "10337" . ";" . $date . ";" . "ILLUMINA" . ";" . "X" . ";" . "X" . ";" . "P" . ";" . "1" . ";" . $knumber . "\n" ;
 }
 
 
