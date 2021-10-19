@@ -1,4 +1,4 @@
- name: Docker-push latest
+name: Docker-push (latest)
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -9,8 +9,7 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
-
+    branches: [ naster ]
 
 jobs:
   push_dockerhub:
