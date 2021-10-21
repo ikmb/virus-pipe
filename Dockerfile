@@ -20,12 +20,6 @@ RUN cd /opt && \
 	tar -xvf biobloomtools-2.3.1.tar.gz && rm biobloomtools-2.3.1.tar.gz && cd  biobloomtools-2.3.1 && \
         ./configure --prefix=/opt/biobloom && make install && \
         cd /opt && rm -Rf biobloomtools-2.3.1
-
-RUN cd /opt && \
-	mkdir -p spades && cd spades && \
-	wget https://github.com/ablab/spades/releases/download/v3.15.0/SPAdes-3.15.0-Linux.tar.gz && \
-	tar -xvf SPAdes-3.15.0-Linux.tar.gz && rm *.tar.gz && \
-	mv SPAdes-3.15.0-Linux 3.15.0
 	
 RUN /opt/conda/envs/virus-pipe-1.2/bin/snpEff download NC_045512.2
 
