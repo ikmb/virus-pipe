@@ -21,7 +21,7 @@ RUN cd /opt && \
         ./configure --prefix=/opt/biobloom && make install && \
         cd /opt && rm -Rf biobloomtools-2.3.1
 	
-RUN /opt/conda/envs/virus-pipe-1.2/bin/snpEff download NC_045512.2
+RUN /opt/conda/envs/virus-pipe-1.3/bin/snpEff download NC_045512.2
 
 RUN cd /opt && git clone https://github.com/atks/vt.git && cd vt \
 	&& git checkout 0.577 && make
