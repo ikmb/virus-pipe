@@ -295,7 +295,6 @@ process get_software_versions {
 	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
-	    multiqc --version &> v_multiqc.txt
 	    bwa &> v_bwa.txt 2>&1 || true	    
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
@@ -500,7 +499,7 @@ process kraken2yaml {
 
 process denovo_assemble_virus {
 
-	label 'std'
+	label 'spades'
 
 	publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 
@@ -550,7 +549,7 @@ process fail_sample {
 // Run de-novo assembly using coronaspades
 process denovo_assembly_scaffold {
 
-	label 'std'
+	label 'ragtag'
 
         publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 	
@@ -1186,7 +1185,7 @@ process db_upload {
 // **********************
 process MultiQC {
 
-	label 'std'
+	label 'multiqc'
 
 	publishDir "${OUTDIR}/MultiQC", mode: 'copy'
 
