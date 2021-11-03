@@ -172,7 +172,7 @@ process fetch_critical_lineages {
 	script:
 	
 	"""
-		wget https://github.com/cov-lineages/pangolin/archive/refs/tags/v3.1.15.tar.gz
+		wget https://github.com/cov-lineages/pangolin/archive/refs/tags/v2.3.8.tar.gz
 		tar -xvf v2.3.8.tar.gz 
 		mv pangolin-2.3.8/pangolin/data/*.csv .
 		rm -Rf *.tar.gz pangolin*
