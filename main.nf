@@ -162,23 +162,6 @@ def returnFile(it) {
     return inputFile
 }
 
-process fetch_critical_lineages {
-
-	executor 'local'
-
-	output:
-	file("*.csv") into variant_definitions
-
-	script:
-	
-	"""
-		wget https://github.com/cov-lineages/pangolin/archive/refs/tags/v2.3.8.tar.gz
-		tar -xvf v2.3.8.tar.gz 
-		mv pangolin-2.3.8/pangolin/data/*.csv .
-		rm -Rf *.tar.gz pangolin*
-	"""
-
-}
 
 /*
 */
@@ -220,6 +203,7 @@ if (params.samples) {
         .set { reads_fastp }
 }
 
+// alias name lookup
 process get_pangolin_aliases {
 
 	executor 'local'
@@ -340,7 +324,7 @@ process trim_reads {
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 \
 			--out1 $left --out2 $right $options \
-			-f $params.clip -t $params.clip \
+			-f $params.clip \
 			--detect_adapter_for_pe \
 			-w ${task.cpus} -j $json -h $html --length_required 35
         """
@@ -835,11 +819,11 @@ process normalize_and_adjust_vcf {
 	"""
 		vt normalize -o tmp.vcf -r $ref_genome $vcf
 
-		adjust_gt_rki.py -o $vcf_filtered --vf $params.cns_gt_adjust $vcf
-
+		adjust_gt_rki.py -o temp.vcf --vf $params.cns_gt_adjust $vcf
+		adjust_del.py -o $vcf_filtered temp.vcf
 		bgzip -c $vcf_filtered > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
-		
+		rm temp.vcf
 	"""
 
 }
@@ -926,6 +910,7 @@ process consensus_header {
 	header = base_id 
 	masked_header = base_id
 	description = id.split("-")[1..-1].join("-")
+	//description = id
 
 	"""
 		echo '>$header' > $consensus_reheader
