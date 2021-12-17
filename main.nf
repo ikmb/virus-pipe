@@ -191,6 +191,7 @@ if (params.samples) {
 	.map { row ->
                         def patient = row.IndivID
 			def sample = row.SampleID
+			def rgid = row.RGID
                         def left = returnFile( row.R1 )
 			def right = returnFile( row.R2)
                         [ patient, sample, left, right ]
@@ -199,7 +200,7 @@ if (params.samples) {
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
-        .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
+        .map { triple -> tuple( triple[0].split("_L0")[0],triple[0].split("_L0")[0],triple[0],triple[1],triple[2]) }
         .set { reads_fastp }
 }
 
@@ -302,12 +303,13 @@ process trim_reads {
             }
 
         input:
-        set val(patientID),val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
+        set val(patientID),val(sampleID),val(rgid), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
 	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),file(left),file(right) into ( inputBwa, inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),file(left),file(right) into ( inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into inputBwa
         set file(html),file(json) into fastp_qc
 
         script:
@@ -635,25 +637,50 @@ process align_viral_reads_bwa {
 	label 'std'
 
 	input:
-	set val(patientID),val(sampleID),file(left),file(right) from inputBwa
+	set val(patientID),val(sampleID),val(rgid),file(left),file(right) from inputBwa
 	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) from BwaIndex.collect()
 
 	output:
-	set val(patientID),val(sampleID),file(bam),file(bai) into bwaBam
+	set val(patientID),val(sampleID),file(bam) into AlignedBam
 
 	script:
 	ref_name = fasta.getBaseName()
         bam = sampleID + "." + ref_name + ".aligned.bam"
-        bai = bam + ".bai"	
+        bai = bam + ".bai"
 
 	"""
 		samtools dict -a $ref_name -o assembly.dict -s Sars-CoV2 $fasta
-		bwa mem -H assembly.dict -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
+		bwa mem -H assembly.dict -M -R "@RG\\tID:${rgid}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
                         -t ${task.cpus} ${fasta} $left $right \
                         | samtools sort -O bam -o $bam -
 		samtools index $bam
 	"""
 }
+
+AlignedBam.groupTuple(by: [0,1]).into { bams_for_merging ; bams_singleton }
+
+// If sample has multiple bam files, merge
+process merge_multi_lane {
+
+        input:
+        set indivID, sampleID, file(aligned_bam_list) from bams_for_merging.filter { i,s,b -> b.size() > 1 && b.size() < 1000 }
+
+        output:
+        set indivID,sampleID,file(merged_bam),file(merged_bam_index) into merged_bams
+
+        script:
+        merged_bam = indivID + "_" + sampleID + ".merged.bam"
+        merged_bam_index = merged_bam + ".bai"
+        sample_name = indivID + "_" + sampleID
+
+        """
+                        samtools merge -@ 4 $merged_bam ${aligned_bam_list.join(' ')}
+			samtools index $merged_bam
+        """
+}
+
+// combine merged bam files with singleton bams
+all_bams = merged_bams.concat(bams_singleton.filter { i,s,b -> b.size() < 2 || b.size() > 1000 } )
 
 // Mark duplicate reads - excise viral genome for downstream analysis if combined ref was used
 process mark_dups {
@@ -663,7 +690,7 @@ process mark_dups {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(bam),file(bai) from bwaBam
+	set val(patientID),val(id),file(bam) from all_bams
 
 	output:
 	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( inputBamStats, inputBamCoverage, bam2mask)
@@ -676,6 +703,7 @@ process mark_dups {
 	bai_md_virus = bam_md_virus + ".bai"
 
 	"""
+		samtools index $bam
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
 		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - tmp.md.bam
 		samtools rmdup tmp.md.bam $bam_md
