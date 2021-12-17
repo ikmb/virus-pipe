@@ -645,7 +645,7 @@ process align_viral_reads_bwa {
 
 	script:
 	ref_name = fasta.getBaseName()
-        bam = sampleID + "." + ref_name + ".aligned.bam"
+        bam = rgid + "." + ref_name + ".aligned.bam"
         bai = bam + ".bai"
 
 	"""
@@ -669,9 +669,8 @@ process merge_multi_lane {
         set indivID,sampleID,file(merged_bam),file(merged_bam_index) into merged_bams
 
         script:
-        merged_bam = indivID + "_" + sampleID + ".merged.bam"
+        merged_bam = sampleID + ".merged.bam"
         merged_bam_index = merged_bam + ".bai"
-        sample_name = indivID + "_" + sampleID
 
         """
                         samtools merge -@ 4 $merged_bam ${aligned_bam_list.join(' ')}
