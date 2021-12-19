@@ -308,7 +308,7 @@ process trim_reads {
 
         output:
 	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),file(left),file(right) into ( inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into ( inputBowtieFilter, inputBioBloomHost )
 	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into inputBwa
         set file(html),file(json) into fastp_qc
 
@@ -370,32 +370,56 @@ if (params.filter) {
         // ****************
         // Using Bowtie2
         // ****************
+
         process remove_host_reads_bt {
 
                 label 'bowtie2'
 
-                publishDir "${OUTDIR}/${id}/CleanReads", mode: 'copy'
+                publishDir "${OUTDIR}/${patientID}/CleanReads", mode: 'copy'
 
                 input:
-                set val(patientID),val(id),file(left_reads),file(right_reads) from inputBowtieFilter
+                set val(patientID),val(sampleID),val(rgid),file(left_reads),file(right_reads) from inputBowtieFilter
                 path(bwt_files) from host_genome.collect()
 
                 output:
-                set val(patientID),val(id),file(left_clean),file(right_clean) into ( inputKraken, inputSpades, inputFailed  )
+                set val(patientID),val(sampleID),file(left_clean),file(right_clean) into filtered_reads
 
                 script:
-                left_clean = id + ".clean.R1.fastq.gz"
-                right_clean = id + ".clean.R2.fastq.gz"
-                unpaired_clean = id + ".clean.unpaired.fastq.gz"
-                bowtie_log = id + ".txt"
+                left_clean = rgid + ".clean.R1.fastq.gz"
+                right_clean = rgid + ".clean.R2.fastq.gz"
+                unpaired_clean = rgid + ".clean.unpaired.fastq.gz"
+                bowtie_log = rgid + ".txt"
 
                 """
                         bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean \
-				--un-conc-gz ${id}.clean.R%.fastq.gz 2> $bowtie_log
+				--un-conc-gz ${rgid}.clean.R%.fastq.gz 2> $bowtie_log
                 """
 
         }
 
+	grouped_filtered_reads = filtered_reads.groupTuple(by: [0,1])
+
+	process merge_trimmed_reads {
+
+		label 'std'
+
+		input:
+		set val(patientID),val(id),path(reads) from grouped_filtered_reads
+
+		output:
+		set val(patientID),val(id),path(left),path(right) into ( inputKraken, inputSpades, inputFailed  )
+
+		script:
+		left = patientID + "_R1_001.fastq.gz"
+		right = patientID + "_R2_001.fastq.gz"
+
+		"""
+
+			zcat *R1*.fastq.gz | gzip >> $left
+			zcat *R2*.fastq.gz | gzip >> $right
+
+		"""
+	}
 
 } else {
 	inputBioBloomHost.into { inputKraken; inputSpades; inputFailed  }
@@ -661,6 +685,8 @@ AlignedBam.groupTuple(by: [0,1]).into { bams_for_merging ; bams_singleton }
 
 // If sample has multiple bam files, merge
 process merge_multi_lane {
+
+	label 'std'
 
         input:
         set indivID, sampleID, file(aligned_bam_list) from bams_for_merging.filter { i,s,b -> b.size() > 1 && b.size() < 1000 }
