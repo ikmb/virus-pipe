@@ -404,7 +404,7 @@ if (params.filter) {
 		label 'std'
 
 		input:
-		set val(patientID),val(id),path(reads) from grouped_filtered_reads
+		set val(patientID),val(id),path(lreads),path(rreads) from grouped_filtered_reads
 
 		output:
 		set val(patientID),val(id),path(left),path(right) into ( inputKraken, inputSpades, inputFailed  )
@@ -415,8 +415,8 @@ if (params.filter) {
 
 		"""
 
-			zcat *R1*.fastq.gz | gzip >> $left
-			zcat *R2*.fastq.gz | gzip >> $right
+			zcat ${lreads} | gzip >> $left
+			zcat ${rreads} | gzip >> $right
 
 		"""
 	}
