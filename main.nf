@@ -662,6 +662,8 @@ AlignedBam.groupTuple(by: [0,1]).into { bams_for_merging ; bams_singleton }
 // If sample has multiple bam files, merge
 process merge_multi_lane {
 
+	label 'std'
+
         input:
         set indivID, sampleID, file(aligned_bam_list) from bams_for_merging.filter { i,s,b -> b.size() > 1 && b.size() < 1000 }
 
