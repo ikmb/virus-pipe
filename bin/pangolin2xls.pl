@@ -4,6 +4,9 @@ use strict;
 use Cwd;
 use Getopt::Long;
 use Excel::Writer::XLSX;
+use JSON;
+
+my $alias = undef;
 
 my $usage = qq{
 perl my_script.pl
@@ -24,6 +27,7 @@ my $help;
 
 GetOptions(
     "help" => \$help,
+    "alias=s" => \$alias,
     "outfile=s" => \$outfile);
 
 # Print Help and exit
@@ -37,6 +41,12 @@ if ($help) {
 #}
 
 die "Must specify an outfile (--outfile)" unless (defined $outfile);
+
+open my $fh, '<', $alias or die "Can't open file $!";
+
+my $file_content = do { local $/; <$fh> };
+
+my $lookup = decode_json($file_content);
 
 my $dir = getcwd;
 
@@ -81,6 +91,16 @@ foreach my $file (glob("$dir/*.csv")) {
                 #my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 
                 next unless ($status eq "passed_qc");
+
+		# shorten call into main lineage only
+		chomp($lineage);
+                my $trunk = (split /\./, $lineage)[0] ;
+                if (exists $lookup->{$trunk}) {
+			my $match = $lookup->{$trunk};
+			if (length $match > 0) {
+	                        $lineage = $match;
+			}
+                }
 
                 my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage,  "OK" );
                 &write_xlsx($worksheet, $row, @ele);

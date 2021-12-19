@@ -162,23 +162,6 @@ def returnFile(it) {
     return inputFile
 }
 
-process fetch_critical_lineages {
-
-	executor 'local'
-
-	output:
-	file("*.csv") into variant_definitions
-
-	script:
-	
-	"""
-		wget https://github.com/cov-lineages/pangolin/archive/refs/tags/v2.3.8.tar.gz
-		tar -xvf v2.3.8.tar.gz 
-		mv pangolin-2.3.8/pangolin/data/*.csv .
-		rm -Rf *.tar.gz pangolin*
-	"""
-
-}
 
 /*
 */
@@ -208,6 +191,7 @@ if (params.samples) {
 	.map { row ->
                         def patient = row.IndivID
 			def sample = row.SampleID
+			def rgid = row.RGID
                         def left = returnFile( row.R1 )
 			def right = returnFile( row.R2)
                         [ patient, sample, left, right ]
@@ -216,10 +200,25 @@ if (params.samples) {
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
-        .map { triple -> tuple( triple[0],triple[0],triple[1],triple[2]) }
+        .map { triple -> tuple( triple[0].split("_L0")[0],triple[0].split("_L0")[0],triple[0],triple[1],triple[2]) }
         .set { reads_fastp }
 }
 
+// alias name lookup
+process get_pangolin_aliases {
+
+	executor 'local'
+
+	output:
+	file("alias_key.json") into pangolin_alias_json
+
+	script:
+
+	"""
+		wget https://raw.githubusercontent.com/cov-lineages/pango-designation/master/pango_designation/alias_key.json
+	"""
+}
+	
 process get_pangolin_version {
 
 	executor 'local'
@@ -281,7 +280,6 @@ process get_software_versions {
 	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
-	    multiqc --version &> v_multiqc.txt
 	    bwa &> v_bwa.txt 2>&1 || true	    
 	    parse_versions.pl >  $yaml_file
 	    parse_versions_tab.pl > $tab_file
@@ -297,15 +295,21 @@ process trim_reads {
 
 	scratch true
 
-        publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy'
+        publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy',
+		saveAs: {filename ->
+                if (filename.indexOf(".html") > 0) filename
+                else if (filename.indexOf(".json") > 0) filename
+                else null
+            }
 
         input:
-        set val(patientID),val(sampleID), file(fastqR1),file(fastqR2) from reads_fastp
+        set val(patientID),val(sampleID),val(rgid), file(fastqR1),file(fastqR2) from reads_fastp
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
 	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),file(left),file(right) into ( inputBwa, inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),file(left),file(right) into ( inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into inputBwa
         set file(html),file(json) into fastp_qc
 
         script:
@@ -322,7 +326,7 @@ process trim_reads {
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 \
 			--out1 $left --out2 $right $options \
-			-f $params.clip -t $params.clip \
+			-f $params.clip \
 			--detect_adapter_for_pe \
 			-w ${task.cpus} -j $json -h $html --length_required 35
         """
@@ -481,7 +485,7 @@ process kraken2yaml {
 
 process denovo_assemble_virus {
 
-	label 'std'
+	label 'spades'
 
 	publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 
@@ -531,7 +535,7 @@ process fail_sample {
 // Run de-novo assembly using coronaspades
 process denovo_assembly_scaffold {
 
-	label 'std'
+	label 'ragtag'
 
         publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
 	
@@ -633,25 +637,47 @@ process align_viral_reads_bwa {
 	label 'std'
 
 	input:
-	set val(patientID),val(sampleID),file(left),file(right) from inputBwa
+	set val(patientID),val(sampleID),val(rgid),file(left),file(right) from inputBwa
 	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) from BwaIndex.collect()
 
 	output:
-	set val(patientID),val(sampleID),file(bam),file(bai) into bwaBam
+	set val(patientID),val(sampleID),file(bam) into AlignedBam
 
 	script:
 	ref_name = fasta.getBaseName()
-        bam = sampleID + "." + ref_name + ".aligned.bam"
-        bai = bam + ".bai"	
+        bam = rgid + "." + ref_name + ".aligned.bam"
+        bai = bam + ".bai"
 
 	"""
 		samtools dict -a $ref_name -o assembly.dict -s Sars-CoV2 $fasta
-		bwa mem -H assembly.dict -M -R "@RG\\tID:${sampleID}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
+		bwa mem -H assembly.dict -M -R "@RG\\tID:${rgid}\\tPL:ILLUMINA\\tSM:${sampleID}\\tLB:${sampleID}\\tDS:${fasta}\\tCN:CCGA" \
                         -t ${task.cpus} ${fasta} $left $right \
                         | samtools sort -O bam -o $bam -
 		samtools index $bam
 	"""
 }
+
+AlignedBam.groupTuple(by: [0,1]).into { bams_for_merging ; bams_singleton }
+
+// If sample has multiple bam files, merge
+process merge_multi_lane {
+
+        input:
+        set indivID, sampleID, file(aligned_bam_list) from bams_for_merging.filter { i,s,b -> b.size() > 1 && b.size() < 1000 }
+
+        output:
+        set indivID,sampleID,file(merged_bam) into merged_bams
+
+        script:
+        merged_bam = sampleID + ".merged.bam"
+
+        """
+                        samtools merge -@ 4 $merged_bam ${aligned_bam_list.join(' ')}
+        """
+}
+
+// combine merged bam files with singleton bams
+all_bams = merged_bams.concat(bams_singleton.filter { i,s,b -> b.size() < 2 || b.size() > 1000 } )
 
 // Mark duplicate reads - excise viral genome for downstream analysis if combined ref was used
 process mark_dups {
@@ -661,7 +687,7 @@ process mark_dups {
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
-	set val(patientID),val(id),file(bam),file(bai) from bwaBam
+	set val(patientID),val(id),file(bam) from all_bams
 
 	output:
 	set val(patientID),val(id),file(bam_md_virus),file(bai_md_virus) into ( inputBamStats, inputBamCoverage, bam2mask)
@@ -674,6 +700,7 @@ process mark_dups {
 	bai_md_virus = bam_md_virus + ".bai"
 
 	"""
+		samtools index $bam
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
 		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - tmp.md.bam
 		samtools rmdup tmp.md.bam $bam_md
@@ -817,11 +844,11 @@ process normalize_and_adjust_vcf {
 	"""
 		vt normalize -o tmp.vcf -r $ref_genome $vcf
 
-		adjust_gt_rki.py -o $vcf_filtered --vf $params.cns_gt_adjust $vcf
-
+		adjust_gt_rki.py -o temp.vcf --vf $params.cns_gt_adjust $vcf
+		adjust_del.py -o $vcf_filtered temp.vcf
 		bgzip -c $vcf_filtered > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
-		
+		rm temp.vcf
 	"""
 
 }
@@ -896,7 +923,7 @@ process consensus_header {
 	set val(patientID),val(id),file(consensus) from Consensus2Header
 
 	output:
-	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select )
+	set val(patientID),val(id),file(consensus_reheader) into (assemblies_pangolin, consensus2qc, assemblies2select)
 	file(consensus_reheader) into assemblies_db_upload
 	file(consensus_masked_reheader)
 
@@ -908,6 +935,7 @@ process consensus_header {
 	header = base_id 
 	masked_header = base_id
 	description = id.split("-")[1..-1].join("-")
+	//description = id
 
 	"""
 		echo '>$header' > $consensus_reheader
@@ -925,8 +953,6 @@ process consensus_header {
 // QC of the final IUPAC assembly
 process consensus_qc {
 
-	label 'gaas'
-
 	publishDir "${OUTDIR}/${id}/QC", mode: 'copy'
 
 	input:
@@ -939,7 +965,7 @@ process consensus_qc {
 	stats = id + "_assembly_report.txt"
 
 	"""
-		gaas_fasta_statistics.pl -f $consensus_reheader -o stats > $stats
+		assembly_stats.pl -i $consensus_reheader > $stats
 	"""
 }
 
@@ -1008,6 +1034,7 @@ process assembly_pangolin {
 
         output:
         set val(patientID),val(id),path(report) into (pangolin_report, Pangolin2Report)
+	file(report) into PangolinMultiqc
 
         script:
 
@@ -1027,6 +1054,7 @@ process pangolin2yaml {
 
         input:
         file(reports) from pangolin_report.collect()
+	file(json) from pangolin_alias_json.collect()
 
         output:
         file(report) into PangolinYaml
@@ -1040,12 +1068,11 @@ process pangolin2yaml {
 	csv = "pangolin." + run_name + ".csv"
 
         """
-                pangolin2yaml.pl > $report
-		pangolin2xls.pl --outfile $xls > $csv
+                pangolin2yaml.pl --alias $json > $report
+		pangolin2xls.pl --alias $json --outfile $xls > $csv
         """
 
 }
-
 
 // ******************************
 // Stats for Reporting
@@ -1168,7 +1195,7 @@ process db_upload {
 // **********************
 process MultiQC {
 
-	label 'std'
+	label 'multiqc'
 
 	publishDir "${OUTDIR}/MultiQC", mode: 'copy'
 
@@ -1179,9 +1206,9 @@ process MultiQC {
 	file('*') from KrakenYaml.ifEmpty('')
 	file('*') from BamAlignStats.collect()
 	file('*') from QuastReport.collect().ifEmpty('')
-	file('*') from PangolinYaml.ifEmpty('')
 	file('*') from VcfStats.collect()
 	file('*') from software_versions_yaml.collect()
+	file('*') from PangolinMultiqc.collect()
 
 	output:
 	file(report) into multiqc_report

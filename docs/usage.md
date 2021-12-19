@@ -57,7 +57,7 @@ A folder name to which all outputs are written. This can also be a path (relativ
 Remove n bases from both 3' and 5' of each read to account for fragmented amplicon primers that cannot be detected otherwise.
 
 ### `--primer_set` (default: ARTIC-v3)
-Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). This option is likely not useful if the library prep fragments/nicks the adapters.
+Defines which set of PCR primers was used if this is sequenced from amplicons using Illumina (ARTIC-v3 or Eden). This option is likely not useful if the library prep fragments/nicks the adapters and/or reads are generated from fragmented amplicons. If this is the case, the option `--clip` should be used to simply trim off bases from the ends of all reads to remove potential PCR primer contamination. 
 
 ### `--primer_fasta` (default: false)
 Provide a set of primer sequences in FASTA format (overrides --primer_set option)

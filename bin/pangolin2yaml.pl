@@ -3,6 +3,9 @@
 use strict;
 use Getopt::Long;
 use Cwd;
+use JSON;
+use Data::Dumper;
+
 my $usage = qq{
 perl my_script.pl
   Getting help:
@@ -16,11 +19,12 @@ perl my_script.pl
 };
 
 my $outfile = undef;
-
+my $alias = undef;
 my $help;
 
 GetOptions(
     "help" => \$help,
+    "alias=s" => \$alias,
     "outfile=s" => \$outfile);
 
 # Print Help and exit
@@ -35,6 +39,13 @@ if ($outfile) {
 
 my %data;
 my $dir = getcwd;
+
+open my $fh, '<', $alias or die "Can't open file $!";
+
+my $file_content = do { local $/; <$fh> };
+	
+my $lookup = decode_json($file_content);
+	
 
 my $header = qq(
 id: 'pangolin_reports'
@@ -64,7 +75,6 @@ foreach my $file (glob("$dir/*.csv")) {
 	chomp(my @lines = <$fh>);
 
 	my $header = shift @lines ;
-
 	
 	foreach my $line (@lines) {
 
@@ -76,6 +86,16 @@ foreach my $file (glob("$dir/*.csv")) {
                 my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
 
 		next unless ($status eq "passed_qc");
+		chomp($lineage);
+
+		my $trunk = (split /\./, $lineage)[0] ;
+
+		if (exists $lookup->{$trunk} ) {
+			my $match = $lookup->{$trunk};
+			if (length $match > 0) {
+				$lineage = $lookup->{$trunk};
+			}
+		}
 
 		my $entry = "<dt>$lib</dt><dd><samp>$lineage</samp></dd>" ;
                 printf "    $entry\n";
