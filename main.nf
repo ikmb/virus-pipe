@@ -476,6 +476,9 @@ process kraken2_search {
 		if [ ! -f $report ]; then
 			touch $report
 		fi
+		if [ ! -f $kraken_log ]; then
+			touch $kraken_log
+		fi
 	"""
 }
 
