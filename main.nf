@@ -307,8 +307,7 @@ process trim_reads {
 	file(primer_fa) from primers.collect().ifEmpty(false)
 
         output:
-	set val(sampleID),file(left),file(right) into inputBioBloomTarget 
-	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into ( inputBowtieFilter, inputBioBloomHost )
+	set val(patientID),val(sampleID),file(left),file(right) into trimmed_reads
 	set val(patientID),val(sampleID),val(rgid),file(left),file(right) into inputBwa
         set file(html),file(json) into fastp_qc
 
@@ -320,8 +319,8 @@ process trim_reads {
 
         left = fastqR1.getBaseName() + "_trimmed.fastq.gz"
         right = fastqR2.getBaseName() + "_trimmed.fastq.gz"
-        json = sampleID + ".fastp.json"
-        html = sampleID + ".fastp.html"
+        json = rgid + ".fastp.json"
+        html = rgid + ".fastp.html"
 
         """
                 fastp --in1 $fastqR1 --in2 $fastqR2 \
@@ -333,6 +332,30 @@ process trim_reads {
 
 }
 
+grouped_trimmed_reads = trimmed_reads.groupTuple(by: [0,1])
+
+process merge_trimmed_reads {
+
+	label 'std'
+
+       	input:
+       	set val(patientID),val(sampleID),path(lreads),path(rreads) from grouped_trimmed_reads
+
+       	output:
+       	set val(patientID),val(sampleID),path(left),path(right) into ( inputBowtieFilter, inputBioBloomHost )
+	set val(sampleID),path(left),path(right) into inputBioBloomTarget
+
+       	script:
+       	left = patientID + "_R1_001.fastq.gz"
+       	right = patientID + "_R2_001.fastq.gz"
+
+       	"""
+
+       		zcat ${lreads} | gzip >> $left
+                zcat ${rreads} | gzip >> $right
+
+       """
+}
 // ***********************************
 // Make Bloomfilter from Sars-CoV2 ref
 // ***********************************
@@ -378,48 +401,24 @@ if (params.filter) {
                 publishDir "${OUTDIR}/${patientID}/CleanReads", mode: 'copy'
 
                 input:
-                set val(patientID),val(sampleID),val(rgid),file(left_reads),file(right_reads) from inputBowtieFilter
+                set val(patientID),val(sampleID),file(left_reads),file(right_reads) from inputBowtieFilter
                 path(bwt_files) from host_genome.collect()
 
                 output:
-                set val(patientID),val(sampleID),file(left_clean),file(right_clean) into filtered_reads
+                set val(patientID),val(sampleID),file(left_clean),file(right_clean) into ( inputKraken, inputSpades, inputFailed  )
 
                 script:
-                left_clean = rgid + ".clean.R1.fastq.gz"
-                right_clean = rgid + ".clean.R2.fastq.gz"
-                unpaired_clean = rgid + ".clean.unpaired.fastq.gz"
-                bowtie_log = rgid + ".txt"
+                left_clean = sampleID + ".clean.R1.fastq.gz"
+                right_clean = sampleID + ".clean.R2.fastq.gz"
+                unpaired_clean = sampleID + ".clean.unpaired.fastq.gz"
+                bowtie_log = sampleID + ".txt"
 
                 """
                         bowtie2 -x genome -1 $left_reads -2 $right_reads -S /dev/null --no-unal -p ${task.cpus} --un-gz $unpaired_clean \
-				--un-conc-gz ${rgid}.clean.R%.fastq.gz 2> $bowtie_log
+				--un-conc-gz ${sampleID}.clean.R%.fastq.gz 2> $bowtie_log
                 """
 
         }
-
-	grouped_filtered_reads = filtered_reads.groupTuple(by: [0,1])
-
-	process merge_trimmed_reads {
-
-		label 'std'
-
-		input:
-		set val(patientID),val(id),path(lreads),path(rreads) from grouped_filtered_reads
-
-		output:
-		set val(patientID),val(id),path(left),path(right) into ( inputKraken, inputSpades, inputFailed  )
-
-		script:
-		left = patientID + "_R1_001.fastq.gz"
-		right = patientID + "_R2_001.fastq.gz"
-
-		"""
-
-			zcat ${lreads} | gzip >> $left
-			zcat ${rreads} | gzip >> $right
-
-		"""
-	}
 
 } else {
 	inputBioBloomHost.into { inputKraken; inputSpades; inputFailed  }
