@@ -10,8 +10,9 @@ IKMB Virus pipeline | version ${params.version}
 Usage: nextflow run ikmb/virus-pipe --reads 'path/to/*_{1,2}_001.fastq.gz'
 This example will perform assembly of viral reads, substracting any potential human reads using bloom filters
 Required parameters:
---reads                         Input reads as a set of one or more PE Illumina reads (or:...)
---samples			Sample sheet with additional sample information (instead of --reads). See github for formatting hints.
+--reads                         Input reads as a set of one or more PE Illumina reads (instead of --folder and --samples). 
+--samples			Sample sheet with additional sample information (instead of --reads or --folder). See github for formatting hints.
+--folder			Folder of PE reads (instead of --reads or --samples)
 --email                         Email address to send reports to (enclosed in '')
 Optional parameters:
 --clip				Remove x bases from both ends of the reads (default: 20)
@@ -185,6 +186,11 @@ if (params.ref_with_host) {
 	HostIndexFiles = Channel.empty()
 }
 
+// Alert users to conflicting options
+if (params.samples && params.reads || params.samples && params.folder || params.reads && params.folder) {
+	log.info "Provided more than one input path (folder, samples, reads) - will choose one by this order: samples, folder, reads)."
+}
+
 if (params.samples) {
 	Channel.from(file(params.samples))
         .splitCsv(sep: ';', header: true)
@@ -197,6 +203,11 @@ if (params.samples) {
                         [ patient, sample, left, right ]
                 }
        .set {  reads_fastp }
+} else if (params.folder) {
+	Channel.fromFilePairs(params.folder + "/*_L0*_R{1,2}_001.fastq.gz", flat: true)
+	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
+        .map { triple -> tuple( triple[0].split("_L0")[0],triple[0].split("_L0")[0],triple[0],triple[1],triple[2]) }
+        .set { reads_fastp }
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }

@@ -27,8 +27,11 @@ For more details on available options, see below.
 
 ## Available options and settings
 
+### `--folder` 
+Path to a folder containing Illumina PE reads. Will automatically group files into libraries and lanes. Assumes the CCGA (standard Illumina´) naming scheme: `*_L0*_R{1,2}_001.fastq.gz`. Mutually exclusive with `--reads` and `--samples`.
+
 ### `--reads` 
-Path to a folder with PE Illumina reads for analysis (e.g. --reads /path/to/*_R{1,2}_001.fastq.gz). Must be enclosed in single-quotes.
+Regexp pointing to a list of PE Illumina reads for analysis (e.g. --reads /path/to/*_L0*_R{1,2}_001.fastq.gz). Must be enclosed in single-quotes. Mutually exclusive with `--folder` and `--samples`.
 
 ### `--samples`
 Path to a CSV formatted sample sheet as an alternative to --reads. Expects the following columns:
@@ -40,6 +43,7 @@ IndivID;SampleID;R1;R2
 
 A script is included with this code base to produce such a file from a folder of fastQ files
 
+Mutually exclusive with `--reads` and `--folder`. 
 
 ```
 ruby /path/to/samplesheet_from_folder.rb -f /path/to/folder > Samples.csv

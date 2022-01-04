@@ -7,9 +7,11 @@ custom_logo_url: "http://www.ikmb.uni-kiel.de"
 extra_fn_clean_exts:
     - _R1
     - _R2
+    - -S
     - .dedup
     - type: regex
-      pattern: "-S[0-9]-L[0-9]*_S[0-9]*_L00[0-9]"
+      pattern: "-S[0-9]-L[0]*_S[0-9]*"
+
 report_comment: >
     This report has been generated automatically by the IKMB Virus pipeline.
     For help interpreting the outputs, please see: https://github.com/ikmb/virus-pipe
