@@ -1,4 +1,4 @@
-FROM nfcore/base
+FROM continuumio/miniconda3
 LABEL authors="Marc Hoeppner" \
       description="Docker image containing all requirements for IKMB Virus pipeline"
 
@@ -7,8 +7,8 @@ COPY environment.yml /
 RUN conda env create -f /environment.yml && conda clean -a
 ENV PATH /opt/conda/envs/virus-pipe-1.3/bin:/opt/biobloom/bin:/opt/spades/3.15.0/bin:/opt/vt:$PATH
 
-RUN apt-get update && apt-get -y install procps make gcc  git build-essential autotools-dev automake libsparsehash-dev libboost-all-dev \
-cmake zlib1g-dev coreutils librest-client-perl
+RUN apt-get -y update && apt-get -y install procps make gcc  git build-essential autotools-dev automake libsparsehash-dev libboost-all-dev \
+cmake zlib1g-dev coreutils librest-client-perl librole-rest-client-perl libjson-parse-perl libjson-perl
 
 RUN cd /opt && \
         git clone https://github.com/simongog/sdsl-lite.git && \

@@ -215,6 +215,9 @@ if (params.samples) {
         .set { reads_fastp }
 }
 
+/*
+*/
+
 // alias name lookup
 process get_pangolin_aliases {
 
@@ -247,6 +250,25 @@ process get_pangolin_version {
 	"""
 }
 
+
+process get_freebayes_version {
+
+	executor 'local'
+
+	label 'freebayes'
+
+	output:
+	file(freebayes_version) into fb_version
+
+	script:
+	freebayes_version = "v_freebayes.txt"
+
+	"""
+		freebayes --version &> v_freebayes.txt
+	"""
+	
+}
+
 process get_bowtie_version {
 
 	label 'bowtie2'
@@ -273,6 +295,7 @@ process get_software_versions {
     input:
     file(pangolin_version) from pango_version
     file(bowtie_version) from bowtie2_version
+    file(fb) from fb_version
 
     output:
     file("v*.txt")
@@ -287,7 +310,6 @@ process get_software_versions {
 	    echo $workflow.manifest.version &> v_ikmb_virus_pipe.txt
 	    echo $workflow.nextflow.version &> v_nextflow.txt
 	    echo "Kraken2 2.0.8_beta" > v_kraken2.txt
-	    freebayes --version &> v_freebayes.txt
 	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
@@ -811,7 +833,7 @@ process align_stats {
 // ************************
 process call_variants {
 	
-       	label 'std'
+       	label 'freebayes'
 
 	publishDir "${OUTDIR}/${id}/Variants/Raw", mode: 'copy'
 
