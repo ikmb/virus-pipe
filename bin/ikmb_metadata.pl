@@ -29,6 +29,7 @@ foreach my $file (glob("$dir/*.fasta")) {
  	my $json = encode_json \%data;
  
 	my $ret = $client->request("get",$url,$json,$global_headers);
+	printf Dumper($ret) . "\n";
 	my $r = parse_json($ret->responseContent() );
 	my $date_full = $r->{'order_date'};
 	my $date = (split "T", $date_full)[0];
