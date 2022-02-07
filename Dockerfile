@@ -1,4 +1,4 @@
-FROM nfcore/base
+FROM continuumio/miniconda3
 LABEL authors="Marc Hoeppner" \
       description="Docker image containing all requirements for IKMB Virus pipeline"
 
