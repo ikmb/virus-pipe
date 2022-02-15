@@ -102,10 +102,10 @@ foreach my $file (glob("$dir/*.csv")) {
 			}
                 }
 
-                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina", $seq, $lineage,  "OK" );
+                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina_v2", $seq, $lineage,  "OK" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
-		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina;" . $seq . ";" . $lineage . ";" . "OK" ;
+		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina_v2;" . $seq . ";" . $lineage . ";" . "OK" ;
 		push(@bucket, $entry);
         }
 
