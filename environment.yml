@@ -18,6 +18,6 @@ dependencies:
   - snpeff=5.0.0
   - bwa=0.7.17
   - perl-excel-writer-xlsx
-  - perl-json=4.02
-  - perl-json-parse=0.55
-  - perl-rest-client=273
+  - perl-json=4.05
+  - perl-json-parse=0.61
+  - perl-rest-client=281
