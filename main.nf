@@ -908,7 +908,6 @@ process normalize_and_adjust_vcf {
 		adjust_gt_rki.py -o $vcf_filtered --vf $params.cns_gt_adjust $vcf
 		bgzip -c $vcf_filtered > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
-		rm temp.vcf
 	"""
 
 }
