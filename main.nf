@@ -906,7 +906,7 @@ process normalize_and_adjust_vcf {
 		vt normalize -o tmp.vcf -r $ref_genome $vcf
 
 		adjust_gt_rki.py -o temp.vcf --vf $params.cns_gt_adjust $vcf
-		bgzip -c $vcf_filtered > $vcf_filtered_gz
+		bgzip -c temp.vcf > $vcf_filtered_gz
 		tabix $vcf_filtered_gz
 		rm temp.vcf
 	"""
