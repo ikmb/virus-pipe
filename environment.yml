@@ -6,7 +6,6 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - fastp=0.20.0
   - samtools=1.10
   - bcftools=1.10.2
   - htslib=1.10.2
