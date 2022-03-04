@@ -269,6 +269,22 @@ process get_freebayes_version {
 	
 }
 
+process get_fastp_version {
+
+	label 'fastp'
+
+	executor 'local'
+
+	output:
+	file("v_fastp.txt") into fastp_version
+
+	script:
+
+	"""
+		fastp -v &> v_fastp.txt
+	"""
+}
+
 process get_bowtie_version {
 
 	label 'bowtie2'
@@ -296,6 +312,7 @@ process get_software_versions {
     file(pangolin_version) from pango_version
     file(bowtie_version) from bowtie2_version
     file(fb) from fb_version
+    file(fp) from fastp_version
 
     output:
     file("v*.txt")
@@ -310,7 +327,6 @@ process get_software_versions {
 	    echo $workflow.manifest.version &> v_ikmb_virus_pipe.txt
 	    echo $workflow.nextflow.version &> v_nextflow.txt
 	    echo "Kraken2 2.0.8_beta" > v_kraken2.txt
-	    fastp -v &> v_fastp.txt
 	    samtools --version &> v_samtools.txt
 	    bcftools --version &> v_bcftools.txt
 	    bwa &> v_bwa.txt 2>&1 || true	    
