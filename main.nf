@@ -1220,11 +1220,13 @@ process final_report {
 	output:
 	file(patient_report) 
 	file(patient_report_json) into json_reports
+	file(patient_report_txt)
 
 	script:
 
 	patient_report = id + "_report.pdf"
 	patient_report_json = id + "_report.json"
+	patient_report_txt = id + "_variants.txt"
 
 	"""
 		cp $baseDir/assets/ikmb_bfx_logo.jpg . 
@@ -1237,6 +1239,8 @@ process final_report {
 			--vcf $variants \
 			--plot $coverage_plot \
 			--outfile $patient_report > $patient_report_json
+
+		json2txt.pl --infile $patient_report_json > $patient_report_txt
 	"""
 
 }
