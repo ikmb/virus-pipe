@@ -68,9 +68,6 @@ foreach my $file (glob("$dir/*.csv")) {
 
 	my $f = (split "/" , $file)[-1];
 	my $lib = (split /\./ , $f)[0];
-	#my $entry = "<dt>Library</dt><dd><samp>$lib</samp></dd>" ;
-
-        #printf "    $entry\n";
 
 	chomp(my @lines = <$fh>);
 
@@ -82,10 +79,13 @@ foreach my $file (glob("$dir/*.csv")) {
 		# taxon,lineage,probability,pangoLEARN_version,status,note
 		# NODE_1_length_29902_cov_249.978980,B,1.0,2021-01-16,passed_qc,
 		# taxon,lineage,conflict,ambiguity_score,scorpio_call,scorpio_support,scorpio_conflict,version,pangolin_version,pangoLEARN_version,pango_version,status,note
+		# EVEN NEWER: taxon,lineage,conflict,ambiguity_score,scoprio_call,scorpio_support,scorpio_notes,version,pangolin_version,scorpio_version,constellation_version,is_designated,qc_status,qc_notes,note
 
-                my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
+                my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_notes,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
 
-		next unless ($status eq "passed_qc");
+		# DEFUNCTmy ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
+
+		next unless ($qc_status eq "pass");
 		chomp($lineage);
 
 		my $trunk = (split /\./, $lineage)[0] ;
