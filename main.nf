@@ -1114,9 +1114,10 @@ process assembly_pangolin {
         script:
 
         report = id + ".pangolin.csv"
+	aln = id + ".ref_alignment.fasta"
 
         """
-                pangolin --outfile $report $assembly
+                pangolin --alignment --alignment-file $aln --outfile $report $assembly
         """
 }
 
