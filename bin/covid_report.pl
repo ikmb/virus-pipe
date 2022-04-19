@@ -140,6 +140,7 @@ foreach my $line (@lines) {
         #my ($seq,$lineage,$prob,$vers,$status,$note) = split(",", $line);
 	#my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
 	my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
+	#my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_notes,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
 
         next unless ($status eq "passed_qc");
 

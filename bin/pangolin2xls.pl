@@ -86,11 +86,10 @@ foreach my $file (glob("$dir/*.csv")) {
 		# NEW: taxon,lineage,conflict,pangoLEARN_version,pango_version,status,note
 		# NEWER: taxon,lineage,conflict,ambiguity_score,scorpio_call,scorpio_support,scorpio_conflict,version,pangolin_version,pangoLEARN_version,pango_version,status,note
 		# EVEN NEWER: taxon,lineage,conflict,ambiguity_score,scoprio_call,scorpio_support,scorpio_notes,version,pangolin_version,scorpio_version,constellation_version,is_designated,qc_status,qc_notes,note
-		my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_notes,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
-		
-                #my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
+		# my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_notes,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
+		my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
 
-                next unless ($qc_status eq "pass");
+                next unless ($status eq "passed_qc");
 
 		# shorten call into main lineage only
 		chomp($lineage);
@@ -124,3 +123,4 @@ sub write_xlsx{
         $worksheet->write( $tem_row, $i, $ele[$i]);
     }
 }
+

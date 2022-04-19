@@ -1117,7 +1117,7 @@ process assembly_pangolin {
 	aln = id + ".ref_alignment.fasta"
 
         """
-                pangolin --alignment --alignment-file $aln --outfile $report $assembly
+                pangolin --outfile $report $assembly
         """
 }
 
