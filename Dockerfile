@@ -26,4 +26,5 @@ RUN /opt/conda/envs/virus-pipe-1.3/bin/snpEff download NC_045512.2
 RUN cd /opt && git clone https://github.com/atks/vt.git && cd vt \
 	&& git checkout 0.577 && make
 
+
 RUN pip install --upgrade --force-reinstall git+https://github.com/ewels/MultiQC.git
