@@ -200,18 +200,24 @@ if (params.samples) {
 			def rgid = row.RGID
                         def left = returnFile( row.R1 )
 			def right = returnFile( row.R2)
-                        [ patient, sample, left, right ]
+                        [ patient, sample, rgid, left, right ]
                 }
        .set {  reads_fastp }
 } else if (params.folder) {
 	Channel.fromFilePairs(params.folder + "/*_L0*_R{1,2}_001.fastq.gz", flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
-        .map { triple -> tuple( triple[0].split("_L0")[0],triple[0].split("_L0")[0],triple[0],triple[1],triple[2]) }
+        .map { triple -> 
+		def id = triple[0].split("_L0")[0].split("_")[1..-1].join("_")
+		tuple( id,id,triple[0],triple[1],triple[2]) 
+	}
         .set { reads_fastp }
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
-        .map { triple -> tuple( triple[0].split("_L0")[0],triple[0].split("_L0")[0],triple[0],triple[1],triple[2]) }
+	.map { triple ->
+                def id = triple[0].split("_L0")[0].split("_")[1..-1].join("_")
+                tuple( id,id,triple[0],triple[1],triple[2])
+        }	
         .set { reads_fastp }
 }
 
