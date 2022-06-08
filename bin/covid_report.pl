@@ -135,14 +135,10 @@ my $header = shift @lines ;
 foreach my $line (@lines) {
 
 	chomp($line);
-        # taxon,lineage,probability,pangoLEARN_version,status,note
-        # NODE_1_length_29902_cov_249.978980,B,1.0,2021-01-16,passed_qc,
-        #my ($seq,$lineage,$prob,$vers,$status,$note) = split(",", $line);
-	#my ($seq,$lineage,$conflict,$p_vers,$vers,$status,$note) = split(",", $line);
-	my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$vers,$p_vers,$p_learn_vers,$p_vers,$status,$note) = split(",", $line);
-	#my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_notes,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
 
-        next unless ($status eq "passed_qc");
+	my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
+
+        next unless ($qc_status eq "pass");
 
 	$global_lineage = $lineage;
 	if (length $scorpio_call > 0) {
