@@ -207,16 +207,20 @@ if (params.samples) {
 	Channel.fromFilePairs(params.folder + "/*_L0*_R{1,2}_001.fastq.gz", flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
         .map { triple -> 
-		def id = triple[0].split("_L0")[0].split("_")[1..-1].join("_")
-		tuple( id,id,triple[0],triple[1],triple[2]) 
+		def patient = triple[0].split("_")[0]
+		def id = triple[0].split("_")[1..-1].join("_").split("_L0")[0]
+		def rgid = triple[0].split("_")[1..3].join("_")
+		tuple( patient,id,rgid,triple[1],triple[2]) 
 	}
         .set { reads_fastp }
 } else if (params.reads) {
         Channel.fromFilePairs(params.reads, flat: true)
 	.ifEmpty { exit 1, "Did not find any reads matching your input pattern..." }
 	.map { triple ->
-                def id = triple[0].split("_L0")[0].split("_")[1..-1].join("_")
-                tuple( id,id,triple[0],triple[1],triple[2])
+		def patient = triple[0].split("_")[0]
+                def id = triple[0].split("_")[1..-1].join("_").split("_L0")[0]
+		def rgid = triple[0].split("_")[1..3].join("_")
+                tuple( patient,id,rgid,triple[1],triple[2])
         }	
         .set { reads_fastp }
 }
@@ -346,9 +350,9 @@ process get_software_versions {
 // **********************
 process trim_reads {
 
-	label 'fastp'
+	tag "${patientID}|${sampleID}"
 
-	scratch true
+	label 'fastp'
 
         publishDir "${OUTDIR}/${sampleID}/RawReads", mode: 'copy',
 		saveAs: {filename ->
@@ -393,12 +397,14 @@ process merge_trimmed_reads {
 
 	label 'std'
 
+	tag "${patientID}|${sampleID}"
+
        	input:
        	set val(patientID),val(sampleID),path(lreads),path(rreads) from grouped_trimmed_reads
 
        	output:
        	set val(patientID),val(sampleID),path(left),path(right) into ( inputBowtieFilter, inputBioBloomHost )
-	set val(sampleID),path(left),path(right) into inputBioBloomTarget
+	set val(patientID),val(sampleID),path(left),path(right) into inputBioBloomTarget
 
        	script:
        	left = patientID + "_R1_001.fastq.gz"
@@ -453,7 +459,9 @@ if (params.filter) {
 
                 label 'bowtie2'
 
-                publishDir "${OUTDIR}/${patientID}/CleanReads", mode: 'copy'
+		tag "${patientID}|${sampleID}"
+
+                publishDir "${OUTDIR}/${sampleID}/CleanReads", mode: 'copy'
 
                 input:
                 set val(patientID),val(sampleID),file(left_reads),file(right_reads) from inputBowtieFilter
@@ -485,19 +493,20 @@ if (params.filter) {
 process select_covid_reads {
 
 	label 'std'
+	tag "${patientID}|${sampleID}"
 
-	publishDir "${OUTDIR}/${id}/Bloomfilter/Target", mode: 'copy'
-
+	publishDir "${OUTDIR}/${sampleID}/Bloomfilter/Target", mode: 'copy'
+	
 	input:
 	set file(bf),file(txt) from refBloom.collect()
-        set id,file(left_reads),file(right_reads) from inputBioBloomTarget
+        set val(patientID),val(sampleID),file(left_reads),file(right_reads) from inputBioBloomTarget
 
         output:
-        set id,file(clean_reads)
+        set val(sampleID),file(clean_reads)
         file(bloom) into BloomReportTarget
 
         script:
-        analysis = id + ".Target"
+        analysis = sampleID + ".Target"
         bloom = analysis + "_summary.tsv"
         clean_reads = analysis + ".filtered.fastq.gz"
 
@@ -512,6 +521,8 @@ process select_covid_reads {
 process kraken2_search {
 
 	label 'kraken'
+
+	tag "${patientID}|${id}"
 
 	publishDir "${OUTDIR}/${id}/Taxonomy/", mode: 'copy'
 
@@ -568,7 +579,7 @@ process denovo_assemble_virus {
 
 	label 'spades'
 
-	publishDir "${OUTDIR}/${id}/Denovo_Assembly", mode: 'copy'
+	publishDir "${OUTDIR}/${patientID}/${id}/Denovo_Assembly", mode: 'copy'
 
 	when:
 	params.assemble
@@ -647,7 +658,7 @@ process assembly_qc {
 
 	label 'quast'
 
-	publishDir "${OUTDIR}/${id}/Assembly/Spades/QC", mode: 'copy'
+	publishDir "${OUTDIR}/${patientID}/${id}/Assembly/Spades/QC", mode: 'copy'
 
 	input:
 	set val(patientID),val(id),path(assembly) from assemblies_qc
@@ -717,6 +728,8 @@ process align_viral_reads_bwa {
 
 	label 'std'
 
+	tag "${patientID}|${sampleID}"
+
 	input:
 	set val(patientID),val(sampleID),val(rgid),file(left),file(right) from inputBwa
 	set file(fasta),file(bwa_amb),file(bwa_ann),file(bwa_btw),file(bwa_pac),file(bwa_sa) from BwaIndex.collect()
@@ -745,6 +758,8 @@ process merge_multi_lane {
 
 	label 'std'
 
+	tag "${indivID}|${sampleID}"
+
         input:
         set indivID, sampleID, file(aligned_bam_list) from bams_for_merging.filter { i,s,b -> b.size() > 1 && b.size() < 1000 }
 
@@ -766,6 +781,8 @@ all_bams = merged_bams.concat(bams_singleton.filter { i,s,b -> b.size() < 2 || b
 process mark_dups {
 
        	label 'std'
+
+	tag "${patientID}|${id}"
 
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
@@ -802,6 +819,8 @@ process coverage_stats {
 	
 	label 'std'
 
+	tag "${patientID}|${id}"
+
 	publishDir "${OUTDIR}/${id}/BAM", mode: 'copy'
 
 	input:
@@ -832,6 +851,8 @@ process align_stats {
 
         label 'std'
 
+	tag "${patientID}|${sampleID}"
+
         publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'
 
         input:
@@ -856,6 +877,8 @@ process align_stats {
 process call_variants {
 	
        	label 'freebayes'
+
+	tag "${patientID}|${id}"
 
 	publishDir "${OUTDIR}/${id}/Variants/Raw", mode: 'copy'
 
@@ -887,6 +910,8 @@ process filter_vcf {
 	
        	label 'std'
 
+	tag "${patientID}|${id}"
+
 	//publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
@@ -907,6 +932,8 @@ process filter_vcf {
 process normalize_and_adjust_vcf {
 
         publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+
+	tag "${patientID}|${id}"
 
 	label 'std'
 
@@ -943,6 +970,8 @@ process create_cov_mask {
 
 	publishDir "${OUTDIR}/${sampleID}/BAM", mode: 'copy'	
 
+	tag "${patientID}|${sampleID}"
+
 	label 'bedtools'
 	
 	input:
@@ -969,6 +998,8 @@ MakeConsensus = Vcf2Consensus.join(ConsensusMask, by: [0,1])
 process consensus_assembly {
 
 	//publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
+
+	tag "${patientID}|${id}"
 
 	label 'std'
 
@@ -999,6 +1030,8 @@ process consensus_header {
 	publishDir "${OUTDIR}/RKI_Assemblies", mode: 'copy'
 
 	label 'std'
+
+	tag "${patientID}|${id}"
 
 	input:
 	set val(patientID),val(id),file(consensus) from Consensus2Header
@@ -1036,6 +1069,8 @@ process consensus_qc {
 
 	publishDir "${OUTDIR}/${id}/QC", mode: 'copy'
 
+	tag "${patientID}|${id}"
+
 	input:
 	set val(patientID),val(id),file(consensus_reheader)  from consensus2qc
 
@@ -1056,6 +1091,8 @@ ConsensusSelection = assemblies2select.join(ConsensusStats2Select, by: [0,1]).jo
 process consensus_select_pass {
 
 	publishDir "${params.outdir}/RKI_Assemblies", mode: 'copy'
+
+	tag "${patientID}|${sampleID}"
 
 	input:
 	set val(patientID),val(sampleID),file(assembly),file(assembly_stats),file(coverage_stats) from ConsensusSelection
@@ -1109,6 +1146,8 @@ process assembly_pangolin {
         label 'pangolin'
 
         publishDir "${OUTDIR}/${id}/Pangolin", mode: 'copy'
+
+	tag "${patientID}|${id}"
 
         input:
         set val(patientID),val(id),path(assembly) from assemblies_pangolin
@@ -1165,6 +1204,8 @@ process vcf_stats {
 
 	label 'std'
 
+	tag "${patientID}|${id}"
+
 	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
 
 	input:
@@ -1190,7 +1231,9 @@ process effect_prediction {
 
 	label 'std'
 
-	publishDir "${OUTDIR}/${id}/Variants", mode: 'copy'
+	tag "${patientID}|${id}"
+
+	publishDir "${OUTDIR}//${id}/Variants", mode: 'copy'
 
 	input:
 	set val(patientID),val(id),file(vcf) from VcfPredict
@@ -1217,6 +1260,8 @@ GroupedReports = Kraken2Report.join(Pangolin2Report,by: [0,1]).join(Samtools2Rep
 process final_report {
 
 	label 'std'
+
+	tag "${patientID}|${id}"
 
 	publishDir "${OUTDIR}/Reports", mode: 'copy'
 
@@ -1281,7 +1326,8 @@ process db_upload {
 // **********************
 process MultiQC {
 
-	label 'multiqc'
+	//label 'multiqc'
+	label 'std'
 
 	publishDir "${OUTDIR}/MultiQC", mode: 'copy'
 

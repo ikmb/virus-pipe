@@ -47,7 +47,7 @@ end
 	
 options.platform ? sequencer = options.platform : sequencer = "NovaSeq6000"
 
-puts "IndivID;SampleID;R1;R2"
+puts "IndivID;SampleID;RGID;R1;R2"
 
 patients_replaced = 0
 # group = the library id, may be split across lanes
@@ -77,6 +77,10 @@ groups.each do |group, files|
 		# H26247-L3_S1_L001_R1_001_fastqc.html
         	library = group.split("_S")[0]
         	sample = group.split("_S")[0]
+		if group.match(/^S.*_K[0-9]*.*/)
+			sample = group.split("_")[1..-1].join("_").split("_S")[0]
+		end
+
 		individual = group.split("-")[0]
 
 		if lookup_table.has_key?(sample)
@@ -94,7 +98,7 @@ groups.each do |group, files|
 
         	pgu = flowcell_id + "." + lane + "." + index
 
-        	puts "#{individual};#{sample};#{left};#{right}"
+        	puts "#{individual};#{sample};#{readgroup};#{left};#{right}"
 	end
 end
 
