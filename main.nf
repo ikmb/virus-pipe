@@ -802,14 +802,12 @@ process mark_dups {
 	"""
 		samtools index $bam
 		samtools sort -m 4G -t 2 -n $bam | samtools fixmate -m - fix.bam
-		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup - tmp.md.bam
-		samtools rmdup tmp.md.bam $bam_md
+		samtools sort -m 4G -t 2 -O BAM fix.bam | samtools markdup -r - $bam_md
 		samtools index $bam_md
 
 		samtools view -bh -o $bam_md_virus $bam_md $REF_NAME
 		samtools index $bam_md_virus
 		rm fix.bam 
-		rm tmp.md.bam
 	"""
 
 }
