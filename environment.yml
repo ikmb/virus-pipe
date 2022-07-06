@@ -7,8 +7,8 @@ channels:
   - defaults
 dependencies:
   - samtools=1.10
-  - bcftools=1.10.2
-  - htslib=1.10.2
+  - bcftools=1.10
+  - htslib=1.10
   - mosdepth=0.2.9
   - r-base=3.6.1
   - r-tidyverse=1.3.0
