@@ -34,7 +34,7 @@ foreach my $file (glob("$dir/*.fasta")) {
 	my $date = (split "T", $date_full)[0];
 	$date =~ s/-//g ;
 	
-	printf "10337" . ";" . $date . ";" . "ILLUMINA" . ";" . "X" . ";" . "X" . ";" . "P" . ";" . "1" . ";" . $knumber . "\n" ;
+	printf "10337" . ";" . $date . ";" . "ILLUMINA" . ";" . "N" . ";" . "X" . ";" . "P" . ";" . "1" . ";" . $knumber . "\n" ;
 }
 
 

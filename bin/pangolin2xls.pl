@@ -59,8 +59,8 @@ my $worksheet = $workbook->add_worksheet();
 my $row = 0;
 my @bucket;
 
-my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "TechnischeValidierung" );
-push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;TechnischeValidierung");
+my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "Pangolin-Sublinie", "TechnischeValidierung" );
+push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;Pangolin-Sublinie;TechnischeValidierung");
 
 &write_xlsx($worksheet, $row, @h);
 ++$row;
@@ -84,6 +84,7 @@ foreach my $file (glob("$dir/*.csv")) {
                 chomp($line);
 
 		my ($seq,$lineage,$conflict,$ambig,$scorpio_call,$scorpio_support,$scorpio_conflict,$scorpio_notes,$vers,$p_vers,$s_vers,$c_vers,$designated,$qc_status,$qc_notes,$note) = split(",", $line);
+		my $lineage_full = $lineage;
 
                 next unless ($qc_status eq "pass");
 
@@ -97,10 +98,10 @@ foreach my $file (glob("$dir/*.csv")) {
 			}
                 }
 
-                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina_v2", $seq, $lineage,  "OK" );
+                my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina_v2", $seq, $lineage, $lineage_full, "OK" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
-		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina_v2;" . $seq . ";" . $lineage . ";" . "OK" ;
+		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina_v2;" . $seq . ";" . $lineage . ";" . $lineage_full . ";" . "OK" ;
 		push(@bucket, $entry);
         }
 
