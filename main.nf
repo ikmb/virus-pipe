@@ -97,7 +97,9 @@ if (params.samples && params.reads) {
 
 summary['Reference'] = REF
 summary['Kraken2DB'] = params.kraken2_db
-
+if (params.pango_data) {
+	summary["PangoDB"] = params.pango_data
+}
 if (params.ref_with_host) {
 	summary['MappingReference'] = params.ref_with_host
 } else {
@@ -143,6 +145,9 @@ if (params.primer_fasta) {
 	log.info "Primers for trimming:		${params.primer_set}"
 } else {
 	log.info "No designated primers for trimming - only Illumina primers used"
+}
+if (params.pango_data) {
+	log.info "Local Pangolin data:	${params.pango_data}"
 }
 log.info "Read clipping 3'/5'		${params.clip}bp"
 log.info "Command Line:			$workflow.commandLine"
@@ -1155,12 +1160,15 @@ process assembly_pangolin {
 	file(report) into PangolinMultiqc
 
         script:
-
+        def options = ""
+	if (params.pango_data) {
+		options = "--datadir ${params.pango_data}"
+	}
         report = id + ".pangolin.csv"
 	aln = id + ".ref_alignment.fasta"
 
         """
-                pangolin --outfile $report $assembly
+                pangolin $options --outfile $report $assembly
         """
 }
 
