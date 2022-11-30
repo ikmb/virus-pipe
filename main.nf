@@ -147,7 +147,7 @@ if (params.primer_fasta) {
 	log.info "No designated primers for trimming - only Illumina primers used"
 }
 if (params.pango_data) {
-	log.info "Local Pangolin data:	${params.pango_data}"
+	log.info "Local Pangolin data:		${params.pango_data}"
 }
 log.info "Read clipping 3'/5'		${params.clip}bp"
 log.info "Command Line:			$workflow.commandLine"
