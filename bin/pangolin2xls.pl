@@ -94,9 +94,8 @@ foreach my $file (glob("$dir/*.csv")) {
                 if (exists $lookup->{$trunk}) {
 			my $match = $lookup->{$trunk};
 			if (length $match > 0) {
-				# The reference can sometimes be a list of options. We just join it. 
 				if (ref($match) eq 'ARRAY') {
-					$lineage = (join ",", $match);
+					$lineage = (join ",", @$match);
 				} else {
 		                        $lineage = $match;
 				}
