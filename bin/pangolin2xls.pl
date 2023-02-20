@@ -59,8 +59,8 @@ my $worksheet = $workbook->add_worksheet();
 my $row = 0;
 my @bucket;
 
-my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "Pangolin-Sublinie", "TechnischeValidierung" );
-push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;Pangolin-Sublinie;TechnischeValidierung");
+my @h = ( "Referenz", "Panel","K-Nummer", "Pangolin-Typisierung", "Pangolin-Sublinie", "TechnischeValidierung","IMS_ID" );
+push(@bucket, "Referenz;Panel;K-Nummer;Pangolin-Typisierung;Pangolin-Sublinie;TechnischeValidierung;IMS_ID");
 
 &write_xlsx($worksheet, $row, @h);
 ++$row;
@@ -94,14 +94,19 @@ foreach my $file (glob("$dir/*.csv")) {
                 if (exists $lookup->{$trunk}) {
 			my $match = $lookup->{$trunk};
 			if (length $match > 0) {
-	                        $lineage = $match;
+				# The reference can sometimes be a list of options. We just join it. 
+				if (ref($match) eq 'ARRAY') {
+					$lineage = (join ",", $match);
+				} else {
+		                        $lineage = $match;
+				}
 			}
                 }
 
                 my @ele = ( "NC_045512.2", "QIASeq-SARS-CoV-2_Illumina_v2", $seq, $lineage, $lineage_full, "OK" );
                 &write_xlsx($worksheet, $row, @ele);
 		++$row;
-		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina_v2;" . $seq . ";" . $lineage . ";" . $lineage_full . ";" . "OK" ;
+		my $entry = "NC_045512.2;QIASeq-SARS-CoV-2_Illumina_v2;" . $seq . ";" . $lineage . ";" . $lineage_full . ";" . "OK" . ";" ;
 		push(@bucket, $entry);
         }
 
